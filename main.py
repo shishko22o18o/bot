@@ -19,11 +19,11 @@ import uvicorn
 import aiofiles
 
 # ==================== НАСТРОЙКИ ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN")
-ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+BOT_TOKEN = os.getenv("8713317147:AAESC0L-U3cY9Ga6ta2w_s7TaV6WSeCVZ-k", "YOUR_TOKEN")
+ADMIN_IDS_STR = os.getenv("5896826944", "")
 ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
 if not ADMIN_IDS:
-    ADMIN_IDS = []  # укажи хотя бы один ID через переменную окружения
+    ADMIN_IDS = [5896826944]  # укажи хотя бы один ID через переменную окружения
 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://your-app.up.railway.app")
 BASE_URL = WEBHOOK_URL
@@ -609,3 +609,4 @@ async def on_shutdown():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
