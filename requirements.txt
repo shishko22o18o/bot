@@ -1,0 +1,5 @@
+aiogram==3.4.1
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+aiofiles==24.1.0
+python-multipart==0.0.18
