@@ -563,6 +563,15 @@ async def show_stats(message: Message):
 
 # ==================== FASTAPI ====================
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Убедись, что папка существует
+os.makedirs("static/uploaded", exist_ok=True)
+
+# Монтируем папку static, чтобы файлы были доступны по URL /static/...
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Запускаем бота при старте приложения
@@ -631,5 +640,6 @@ async def create_order(request: Request):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
