@@ -563,14 +563,6 @@ async def show_stats(message: Message):
 
 # ==================== FASTAPI ====================
 
-from fastapi.staticfiles import StaticFiles
-import os
-
-# Убедись, что папка существует
-os.makedirs("static/uploaded", exist_ok=True)
-
-# Монтируем папку static, чтобы файлы были доступны по URL /static/...
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -635,6 +627,16 @@ async def create_order(request: Request):
     conn.commit()
     conn.close()
     return {"status": "ok", "order_id": order_id}
+
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Убедись, что папка существует
+os.makedirs("static/uploaded", exist_ok=True)
+
+# Монтируем папку static, чтобы файлы были доступны по URL /static/...
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
