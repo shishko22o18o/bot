@@ -566,12 +566,105 @@ async def show_stats(message: Message):
     )
     await message.answer(text)
 
+    from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+import json
+import sqlite3
+import os
+
+# ==================== FastAPI приложение ====================
+app = FastAPI()
+
+# Разрешаем CORS для твоего фронтенда
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://shishko22o18o.github.io"],  # твой сайт
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Эндпоинт для получения товаров
+@app.get("/api/products")
+async def get_products():
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM products")
+    rows = c.fetchall()
+    conn.close()
+    
+    products = {}
+    for row in rows:
+        cat = row[3]      # category
+        sub = row[4]      # subcategory
+        image = row[7]    # image path
+        full_image_url = f"https://bot-production-cf41.up.railway.app{image}" if image else None
+        product = {
+            "id": f"p{row[0]}",
+            "name": row[1],
+            "price": row[2],
+            "discount": row[5],
+            "isNew": bool(row[6]),
+            "img": full_image_url or "images/tovary/default.jpg"
+        }
+        if cat == "vape":
+            if sub not in products.get("vape", {}):
+                products.setdefault("vape", {})[sub] = []
+            products["vape"][sub].append(product)
+        else:
+            products.setdefault(cat, []).append(product)
+    return products
+
+# Эндпоинт для приёма заказов
+@app.post("/api/order")
+async def create_order(request: Request):
+    order = await request.json()
+    conn = sqlite3.connect('shop.db')
+    c = conn.cursor()
+    c.execute('''INSERT INTO orders 
+                 (user_id, user_name, items, total, created_at)
+                 VALUES (?, ?, ?, ?, ?)''',
+              (order.get('user', 'unknown'), order.get('user', 'unknown'),
+               json.dumps(order['items']), order['total'], datetime.now()))
+    order_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    # Уведомление админам (опционально)
+    return {"status": "ok", "order_id": order_id}
+
+import asyncio
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запускаем бота при старте приложения
+    asyncio.create_task(dp.start_polling(bot))
+    yield
+    # Останавливаем бота при завершении (опционально)
+    await bot.session.close()
+
+app = FastAPI(lifespan=lifespan)
+
 # ==================== ЗАПУСК ====================
+import uvicorn
+from threading import Thread
+
 async def main():
-    # Удаляем вебхуки (на случай, если были)
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Бот запущен и готов к работе")
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+def run_bot():
     asyncio.run(main())
+
+def run_api():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    # Запускаем бота и FastAPI одновременно
+    from threading import Thread
+    bot_thread = Thread(target=run_bot)
+    api_thread = Thread(target=run_api)
+    bot_thread.start()
+    api_thread.start()
+    bot_thread.join()
+    api_thread.join()
