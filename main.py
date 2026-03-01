@@ -1,12 +1,14 @@
-import os
+import asyncio
 import json
 import logging
 import sqlite3
 import uuid
-import asyncio
+import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+from contextlib import asynccontextmanager
 
+# Импорты aiogram
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -18,45 +20,24 @@ from aiogram.types import (
 )
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+
+# Импорты FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+# Дополнительные библиотеки
 import aiofiles
 
 # ==================== НАСТРОЙКИ ====================
-BOT_TOKEN = "8747117983:AAF3DH0se80ADTU6kO4cyx7ZqmzGZ2YW7TU"   # Замени на свой токен
-ADMIN_IDS = [5896826944]                                       # Список ID администраторов
-WEB_APP_URL = "https://shishko22o18o.github.io/bau28store/"   # URL твоего мини-приложения
-# ====================================================
+BOT_TOKEN = os.getenv("BOT_TOKEN",)
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
+if not ADMIN_IDS:
+    ADMIN_IDS = []  # Задайте хотя бы один ID через переменную окружения
 
-# База данных SQLite
 DB_PATH = "shop.db"
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-
-# Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-
-# ==================== КЛАВИАТУРЫ ====================
-def get_main_keyboard(is_admin: bool = False):
-    """Возвращает клавиатуру главного меню"""
-    if is_admin:
-        kb = [
-            [KeyboardButton(text="📦 Товары")],
-            [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="➕ Добавить товар")],
-            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url=WEB_APP_URL))]
-        ]
-    else:
-        kb = [
-            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url=WEB_APP_URL))]
-        ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-
-def get_cancel_keyboard():
-    """Клавиатура с кнопкой Отмена"""
-    kb = [[KeyboardButton(text="❌ Отмена")]]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+BASE_URL = os.getenv("WEBHOOK_URL", "https://bot-production-cf41.up.railway.app")  # замени на свой URL
 
 # ==================== БАЗА ДАННЫХ ====================
 def init_db():
@@ -85,7 +66,12 @@ def init_db():
 
 init_db()
 
-# ==================== FSM ДЛЯ ДОБАВЛЕНИЯ ТОВАРА ====================
+# ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
+storage = MemoryStorage()
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher(storage=storage)
+
+# ==================== FSM ====================
 class AddProduct(StatesGroup):
     name = State()
     price = State()
@@ -95,7 +81,6 @@ class AddProduct(StatesGroup):
     is_new = State()
     photo = State()
 
-# ==================== FSM ДЛЯ РЕДАКТИРОВАНИЯ ТОВАРА ====================
 class EditProduct(StatesGroup):
     choose_field = State()
     new_value = State()
@@ -127,7 +112,26 @@ def get_product_by_id(product_id: int) -> Optional[Dict[str, Any]]:
         }
     return None
 
-# ==================== КОМАНДА СТАРТ ====================
+def get_main_keyboard(is_admin: bool = False):
+    if is_admin:
+        kb = [
+            [KeyboardButton(text="📦 Товары")],
+            [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
+            [KeyboardButton(text="➕ Добавить товар")],
+            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
+        ]
+    else:
+        kb = [
+            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
+        ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+def get_cancel_keyboard():
+    kb = [[KeyboardButton(text="❌ Отмена")]]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+# ==================== ХЭНДЛЕРЫ БОТА ====================
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     admin = is_admin(message.from_user.id)
@@ -138,7 +142,6 @@ async def cmd_start(message: Message):
     )
     await message.answer(welcome, reply_markup=get_main_keyboard(admin))
 
-# ==================== ОТМЕНА ====================
 @dp.message(F.text == "❌ Отмена", StateFilter("*"))
 async def cancel_handler(message: Message, state: FSMContext):
     await state.clear()
@@ -156,7 +159,6 @@ async def handle_web_app_data(message: Message):
             await message.answer("❌ Корзина пуста. Заказ не оформлен.")
             return
 
-        # Сохраняем заказ в БД
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('''INSERT INTO orders (user_id, user_name, items, total, created_at)
@@ -167,7 +169,6 @@ async def handle_web_app_data(message: Message):
         conn.commit()
         conn.close()
 
-        # Формируем чек
         receipt = "🧾 <b>Детали заказа:</b>\n\n"
         for item in items:
             name = item.get('name', 'Товар')
@@ -177,10 +178,8 @@ async def handle_web_app_data(message: Message):
             receipt += f"▪️ {name} — {qty} шт. x {price} ₽ = <b>{sum_price} ₽</b>\n"
         receipt += f"\n💰 <b>ИТОГО: {total} ₽</b>"
 
-        # Подтверждение покупателю
         await message.answer(f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n{receipt}\n\n<i>Скоро с вами свяжутся.</i>")
 
-        # Уведомление администраторам
         user_link = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
         admin_msg = (
             f"🚨 <b>НОВЫЙ ЗАКАЗ #{order_id}</b> 🚨\n\n"
@@ -272,7 +271,6 @@ async def add_photo(message: Message, state: FSMContext, bot: Bot):
     ext = file.file_path.split('.')[-1] if '.' in file.file_path else 'jpg'
     filename = f"{uuid.uuid4().hex}.{ext}"
     file_path = f"static/uploaded/{filename}"
-    # Создаём папку, если её нет
     os.makedirs("static/uploaded", exist_ok=True)
     await bot.download_file(file.file_path, file_path)
 
@@ -335,7 +333,6 @@ async def show_product_list(cat: str, page: int, callback: CallbackQuery):
     if nav_buttons:
         inline_kb.append(nav_buttons)
 
-    # Добавляем кнопки для каждого товара
     for p in products:
         inline_kb.append([
             InlineKeyboardButton(text=f"✏️ {p[1][:15]}...", callback_data=f"edit_{p[0]}_menu"),
@@ -433,7 +430,6 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
         await state.set_state(EditProduct.new_value)
         await callback.message.edit_text("Введите новую скидку (число):")
     elif field == "isnew":
-        # Переключение
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("SELECT is_new FROM products WHERE id=?", (product_id,))
@@ -469,7 +465,6 @@ async def edit_text_field(message: Message, state: FSMContext):
         if new_value not in ['clothes', 'accessories', 'vape', 'electronics']:
             await message.answer("❌ Неверная категория. Допустимы: clothes, accessories, vape, electronics")
             return
-        # Если меняем категорию, сбрасываем подкатегорию
         c.execute("UPDATE products SET category=?, subcategory=? WHERE id=?", (new_value, None, product_id))
     elif field == "discount":
         if not new_value.isdigit():
@@ -566,28 +561,30 @@ async def show_stats(message: Message):
     )
     await message.answer(text)
 
-    from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-import json
-import sqlite3
-import os
+# ==================== FASTAPI ====================
 
-# ==================== FastAPI приложение ====================
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запускаем бота при старте приложения
+    asyncio.create_task(dp.start_polling(bot))
+    yield
+    # Останавливаем бота при завершении
+    await bot.session.close()
 
-# Разрешаем CORS для твоего фронтенда
+app = FastAPI(lifespan=lifespan)
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://shishko22o18o.github.io"],  # твой сайт
+    allow_origins=["https://shishko22o18o.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Эндпоинт для получения товаров
 @app.get("/api/products")
 async def get_products():
-    conn = sqlite3.connect('shop.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT * FROM products")
     rows = c.fetchall()
@@ -598,7 +595,7 @@ async def get_products():
         cat = row[3]      # category
         sub = row[4]      # subcategory
         image = row[7]    # image path
-        full_image_url = f"https://bot-production-cf41.up.railway.app{image}" if image else None
+        full_image_url = f"{BASE_URL}{image}" if image else None
         product = {
             "id": f"p{row[0]}",
             "name": row[1],
@@ -615,11 +612,10 @@ async def get_products():
             products.setdefault(cat, []).append(product)
     return products
 
-# Эндпоинт для приёма заказов
 @app.post("/api/order")
 async def create_order(request: Request):
     order = await request.json()
-    conn = sqlite3.connect('shop.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''INSERT INTO orders 
                  (user_id, user_name, items, total, created_at)
@@ -629,42 +625,9 @@ async def create_order(request: Request):
     order_id = c.lastrowid
     conn.commit()
     conn.close()
-    # Уведомление админам (опционально)
     return {"status": "ok", "order_id": order_id}
 
-import asyncio
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Запускаем бота при старте приложения
-    asyncio.create_task(dp.start_polling(bot))
-    yield
-    # Останавливаем бота при завершении (опционально)
-    await bot.session.close()
-
-app = FastAPI(lifespan=lifespan)
-
 # ==================== ЗАПУСК ====================
-import uvicorn
-from threading import Thread
-
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-def run_bot():
-    asyncio.run(main())
-
-def run_api():
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
 if __name__ == "__main__":
-    # Запускаем бота и FastAPI одновременно
-    from threading import Thread
-    bot_thread = Thread(target=run_bot)
-    api_thread = Thread(target=run_api)
-    bot_thread.start()
-    api_thread.start()
-    bot_thread.join()
-    api_thread.join()
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
