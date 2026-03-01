@@ -147,17 +147,17 @@ def generate_help_text() -> str:
 ➕ Добавить товар (кнопка) – пошаговое добавление
 /bulk_add – массовое добавление через CSV
 📦 Товары (кнопка) – просмотр/редактирование товаров
-/search <текст> – поиск товаров по названию
+/search [текст] – поиск товаров по названию
 
 📋 Заказы
 📋 Заказы (кнопка) – новые заказы с управлением статусом
 /orders_all [status=...] [date=ГГГГ-ММ-ДД] – все заказы с фильтрацией
-/find_order <id> – поиск заказа по номеру или ID пользователя
+/find_order [id] – поиск заказа по номеру или ID пользователя
 
 🎟️ Промокоды
 /add_promo – создать промокод
 /list_promo – список промокодов
-/delete_promo <код> – удалить промокод
+/delete_promo [код] – удалить промокод
 
 📊 Статистика
 📊 Статистика (кнопка) – общая статистика
@@ -166,8 +166,8 @@ def generate_help_text() -> str:
 /popular – топ-10 товаров по продажам
 
 🚫 Управление пользователями
-/block_user <id> – заблокировать пользователя
-/unblock_user <id> – разблокировать
+/block_user [id] – заблокировать пользователя
+/unblock_user [id] – разблокировать
 /list_blocked – список заблокированных
 
 📤 Экспорт / Импорт
@@ -226,7 +226,7 @@ async def cmd_help(message: Message):
     if not is_admin(message.from_user.id):
         return
     help_text = generate_help_text()
-    await message.answer(help_text)  # без parse_mode
+    await message.answer(help_text, parse_mode=None)  # отключаем HTML для этого сообщения
 # ==================== ОБРАБОТКА ЗАКАЗОВ ИЗ WEB APP ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -1372,5 +1372,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
