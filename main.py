@@ -5,9 +5,10 @@ import uuid
 import os
 import csv
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from io import StringIO
+import io
 
 # Импорты aiogram
 from aiogram import Bot, Dispatcher, types, F
@@ -29,9 +30,21 @@ import uvicorn
 
 # MongoDB
 import motor.motor_asyncio
+import certifi
 
 # Дополнительные библиотеки
 import aiofiles
+
+# Для графика (если не нужно – удалите)
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.dates import DateFormatter
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    logging.warning("matplotlib не установлен, функция /stats_chart будет недоступна")
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -59,18 +72,39 @@ admin_logger.addHandler(admin_handler)
 admin_logger.setLevel(logging.INFO)
 
 # ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
-client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+client = motor.motor_asyncio.AsyncIOMotorClient(
+    MONGO_URL,
+    tlsCAFile=certifi.where(),
+    serverSelectionTimeoutMS=10000,
+    connectTimeoutMS=10000,
+    socketTimeoutMS=30000,
+    retryWrites=True
+)
 db = client["bau28shop"]
 products_col = db["products"]
 orders_col = db["orders"]
+promocodes_col = db["promocodes"]
+blocked_users_col = db["blocked_users"]
 
 async def init_mongodb():
     """Создание индексов для коллекций."""
+    # Проверка соединения
+    try:
+        await client.admin.command('ping')
+        logger.info("✅ MongoDB ping successful")
+    except Exception as e:
+        logger.error(f"❌ MongoDB ping failed: {e}")
+        raise
+
     await products_col.create_index("id", unique=True)
     await products_col.create_index("category")
     await products_col.create_index("subcategory")
     await orders_col.create_index("id", unique=True)
     await orders_col.create_index("status")
+    await orders_col.create_index("created_at")
+    await promocodes_col.create_index("code", unique=True)
+    await promocodes_col.create_index("expires_at")
+    await blocked_users_col.create_index("user_id", unique=True)
     logger.info("MongoDB инициализирована.")
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -124,6 +158,13 @@ class EditProduct(StatesGroup):
     choose_field = State()
     new_value = State()
 
+class AddPromo(StatesGroup):
+    code = State()
+    type = State()
+    value = State()
+    expires = State()
+    max_uses = State()
+
 # ==================== ХЭНДЛЕРЫ БОТА ====================
 
 @dp.message(CommandStart())
@@ -144,14 +185,33 @@ async def cancel_handler(message: Message, state: FSMContext):
 # ==================== ОБРАБОТКА ЗАКАЗОВ ИЗ WEB APP ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
+    # Проверка блокировки пользователя
+    blocked = await blocked_users_col.find_one({"user_id": str(message.from_user.id)})
+    if blocked:
+        await message.answer("⛔ Вы заблокированы и не можете оформлять заказы.")
+        return
+
     try:
         data = json.loads(message.web_app_data.data)
         items = data.get('items', [])
         total = data.get('total', 0)
+        promo_code = data.get('promo')  # если клиент отправил промокод
 
         if not items:
             await message.answer("❌ Корзина пуста. Заказ не оформлен.")
             return
+
+        # Применение промокода, если он есть
+        discount = 0
+        if promo_code:
+            promo = await promocodes_col.find_one({"code": promo_code})
+            if promo and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
+                if promo['type'] == 'percent':
+                    discount = int(total * promo['value'] / 100)
+                else:
+                    discount = promo['value']
+                total -= discount
+                await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
 
         order_id = str(uuid.uuid4().hex[:8])
         order_doc = {
@@ -161,7 +221,9 @@ async def handle_web_app_data(message: Message):
             "items": items,
             "total": total,
             "status": "new",
-            "created_at": datetime.now()
+            "created_at": datetime.now(),
+            "promo_used": promo_code if promo_code else None,
+            "discount_applied": discount
         }
         await orders_col.insert_one(order_doc)
 
@@ -172,6 +234,8 @@ async def handle_web_app_data(message: Message):
             price = item.get('price', 0)
             sum_price = qty * price
             receipt += f"▪️ {name} — {qty} шт. x {price} ₽ = <b>{sum_price} ₽</b>\n"
+        if discount > 0:
+            receipt += f"\n🎟️ Скидка по промокоду: -{discount} ₽\n"
         receipt += f"\n💰 <b>ИТОГО: {total} ₽</b>"
 
         await message.answer(f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n{receipt}\n\n<i>Скоро с вами свяжутся.</i>")
@@ -389,6 +453,7 @@ async def cmd_export_products(message: Message):
     await message.answer_document(FSInputFile(temp_file), caption="📁 Экспорт товаров")
     os.remove(temp_file)
 
+
 # ==================== ДЕТАЛЬНАЯ СТАТИСТИКА ====================
 @dp.message(Command("stats_detailed"))
 async def cmd_stats_detailed(message: Message):
@@ -414,6 +479,74 @@ async def cmd_stats_detailed(message: Message):
     else:
         text += "За последние 7 дней заказов нет."
     await message.answer(text)
+
+@dp.message(Command("stats_detailed"))
+async def cmd_stats_detailed(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    pipeline = [
+        {"$match": {"created_at": {"$gt": seven_days_ago}}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+            "count": {"$sum": 1},
+            "total": {"$sum": "$total"}
+        }},
+        {"$sort": {"_id": -1}}
+    ]
+    cursor = orders_col.aggregate(pipeline)
+    rows = await cursor.to_list(length=10)
+
+    text = "📊 <b>Статистика по дням (последние 7 дней):</b>\n\n"
+    if rows:
+        for r in rows:
+            text += f"📅 {r['_id']}: заказов {r['count']}, сумма {r['total'] or 0} ₽\n"
+    else:
+        text += "За последние 7 дней заказов нет."
+    await message.answer(text)
+
+# ==================== ГРАФИК СТАТИСТИКИ (если есть matplotlib) ====================
+@dp.message(Command("stats_chart"))
+async def cmd_stats_chart(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    if not MATPLOTLIB_AVAILABLE:
+        await message.answer("❌ Библиотека matplotlib не установлена. Установите её для использования этой команды.")
+        return
+
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    pipeline = [
+        {"$match": {"created_at": {"$gt": thirty_days_ago}}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+            "total": {"$sum": "$total"}
+        }},
+        {"$sort": {"_id": 1}}
+    ]
+    cursor = orders_col.aggregate(pipeline)
+    data = await cursor.to_list(length=31)
+
+    if not data:
+        await message.answer("Нет данных за последние 30 дней.")
+        return
+
+    dates = [d['_id'] for d in data]
+    totals = [d['total'] for d in data]
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(dates, totals, marker='o', linestyle='-', color='b')
+    plt.xlabel('Дата')
+    plt.ylabel('Сумма продаж (₽)')
+    plt.title('Продажи за последние 30 дней')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+
+    await message.answer_photo(types.BufferedInputFile(buf.read(), filename="chart.png"), caption="📈 График продаж за 30 дней")
 
 # ==================== ПОИСК ТОВАРОВ ====================
 @dp.message(Command("search"))
@@ -660,6 +793,415 @@ async def show_orders(message: Message):
             text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
         text += f"ИТОГО: {o['total']}₽\nСтатус: {o['status']}\n"
         kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Выполнен", callback_data=f"order_status_{o['id']}_done"),
+                InlineKeyboardButton(text="📦 Отправлен", callback_data=f"order_status_{o['id']}_shipped"),
+                InlineKeyboardButton(text="❌ Отменён", callback_data=f"order_status_{o['id']}_cancelled")
+            ]
+        ])
+        await message.answer(text, reply_markup=kb)
+
+@dp.message(Command("orders_all"))
+async def show_all_orders(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    # Фильтры: ?status=done,?from=2025-01-01
+    args = message.text.split()
+    filter_status = None
+    filter_date = None
+    if len(args) > 1:
+        for arg in args[1:]:
+            if arg.startswith("status="):
+                filter_status = arg.split("=")[1]
+            elif arg.startswith("date="):
+                filter_date = arg.split("=")[1]
+
+    query = {}
+    if filter_status:
+        query["status"] = filter_status
+    if filter_date:
+        try:
+            date_obj = datetime.strptime(filter_date, "%Y-%m-%d")
+            query["created_at"] = {"$gte": date_obj, "$lt": date_obj + timedelta(days=1)}
+        except:
+            pass
+
+    cursor = orders_col.find(query).sort("created_at", -1).limit(50)
+    orders = await cursor.to_list(length=50)
+    if not orders:
+        await message.answer("Нет заказов по заданным критериям.")
+        return
+
+    for o in orders:
+        items = o['items']
+        text = f"🛒 Заказ #{o['id']}\n"
+        text += f"Покупатель: {o['user_name']} (ID: {o['user_id']})\n"
+        text += f"Статус: {o['status']}\n"
+        for item in items:
+            text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
+        text += f"ИТОГО: {o['total']}₽\n"
+        await message.answer(text)
+
+@dp.message(Command("find_order"))
+async def find_order(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите номер заказа или ID пользователя: /find_order 123456")
+        return
+    query = args[1]
+    # Сначала ищем по номеру заказа
+    order = await orders_col.find_one({"id": query})
+    if order:
+        items = order['items']
+        text = f"🛒 Заказ #{order['id']}\n"
+        text += f"Покупатель: {order['user_name']} (ID: {order['user_id']})\n"
+        text += f"Статус: {order['status']}\n"
+        for item in items:
+            text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
+        text += f"ИТОГО: {order['total']}₽"
+        await message.answer(text)
+        return
+    # Если не нашли, ищем по user_id
+    cursor = orders_col.find({"user_id": query}).sort("created_at", -1).limit(5)
+    orders = await cursor.to_list(length=5)
+    if orders:
+        for o in orders:
+            items = o['items']
+            text = f"🛒 Заказ #{o['id']}\n"
+            text += f"Покупатель: {o['user_name']} (ID: {o['user_id']})\n"
+            text += f"Статус: {o['status']}\n"
+            for item in items:
+                text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
+            text += f"ИТОГО: {o['total']}₽"
+            await message.answer(text)
+    else:
+        await message.answer("Заказ не найден.")
+
+@dp.callback_query(lambda c: c.data.startswith("order_status_"))
+async def change_order_status(callback: CallbackQuery):
+    parts = callback.data.split('_')
+    order_id = parts[2]
+    new_status = parts[3]
+    await orders_col.update_one({"id": order_id}, {"$set": {"status": new_status}})
+    log_admin_action(callback.from_user.id, f"Изменил статус заказа #{order_id} на {new_status}")
+    # Уведомление клиенту
+    order = await orders_col.find_one({"id": order_id})
+    if order:
+        user_id = int(order['user_id'])
+        try:
+            await bot.send_message(user_id, f"🔄 Статус вашего заказа #{order_id} изменён на «{new_status}».")
+        except Exception as e:
+            logger.error(f"Не удалось уведомить пользователя {user_id}: {e}")
+    await callback.message.edit_text(f"✅ Статус заказа #{order_id} изменён на «{new_status}».")
+    await callback.answer()
+
+# ==================== ПРОМОКОДЫ ====================
+@dp.message(Command("add_promo"))
+async def cmd_add_promo(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AddPromo.code)
+    await message.answer("Введите код промокода (например, SUMMER10):", reply_markup=get_cancel_keyboard())
+
+@dp.message(AddPromo.code)
+async def promo_code(message: Message, state: FSMContext):
+    code = message.text.strip().upper()
+    existing = await promocodes_col.find_one({"code": code})
+    if existing:
+        await message.answer("❌ Такой код уже существует. Введите другой:")
+        return
+    await state.update_data(code=code)
+    await state.set_state(AddPromo.type)
+    await message.answer("Выберите тип скидки: percent / fixed")
+
+@dp.message(AddPromo.type)
+async def promo_type(message: Message, state: FSMContext):
+    t = message.text.lower()
+    if t not in ['percent', 'fixed']:
+        await message.answer("❌ Допустимо: percent или fixed. Попробуйте ещё раз:")
+        return
+    await state.update_data(type=t)
+    await state.set_state(AddPromo.value)
+    await message.answer("Введите размер скидки (для percent – число от 1 до 100, для fixed – сумма в рублях):")
+
+@dp.message(AddPromo.value)
+async def promo_value(message: Message, state: FSMContext):
+    try:
+        value = int(message.text)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите положительное целое число.")
+        return
+    await state.update_data(value=value)
+    await state.set_state(AddPromo.expires)
+    await message.answer("Введите дату окончания в формате ГГГГ-ММ-ДД (или 'never' для бессрочного):")
+
+@dp.message(AddPromo.expires)
+async def promo_expires(message: Message, state: FSMContext):
+    if message.text.lower() == 'never':
+        expires = datetime(9999, 12, 31)
+    else:
+        try:
+            expires = datetime.strptime(message.text, "%Y-%m-%d")
+        except ValueError:
+            await message.answer("❌ Неверный формат. Введите ГГГГ-ММ-ДД или 'never':")
+            return
+    await state.update_data(expires=expires)
+    await state.set_state(AddPromo.max_uses)
+    await message.answer("Введите максимальное количество использований (или 'unlimited'):")
+
+@dp.message(AddPromo.max_uses)
+async def promo_max_uses(message: Message, state: FSMContext):
+    if message.text.lower() == 'unlimited':
+        max_uses = 999999
+    else:
+        try:
+            max_uses = int(message.text)
+            if max_uses <= 0:
+                raise ValueError
+        except ValueError:
+            await message.answer("❌ Введите положительное целое число или 'unlimited'.")
+            return
+    data = await state.get_data()
+    promo_doc = {
+        "code": data['code'],
+        "type": data['type'],
+        "value": data['value'],
+        "expires_at": data['expires'],
+        "max_uses": max_uses,
+        "used_count": 0
+    }
+    await promocodes_col.insert_one(promo_doc)
+    await state.clear()
+    log_admin_action(message.from_user.id, f"Создал промокод {data['code']}")
+    await message.answer(f"✅ Промокод {data['code']} создан.", reply_markup=get_main_keyboard(True))
+
+@dp.message(Command("list_promo"))
+async def list_promo(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cursor = promocodes_col.find().sort("created_at", -1).limit(20)
+    promos = await cursor.to_list(length=20)
+    if not promos:
+        await message.answer("Промокодов нет.")
+        return
+    text = "🎟️ <b>Активные промокоды:</b>\n\n"
+    for p in promos:
+        expires = p['expires_at'].strftime("%Y-%m-%d") if p['expires_at'] < datetime(9999,12,31) else "бессрочно"
+        text += f"<b>{p['code']}</b> – {'%' if p['type']=='percent' else '₽'} {p['value']}, осталось: {p['max_uses'] - p['used_count']}/{p['max_uses']}, до {expires}\n"
+    await message.answer(text)
+
+@dp.message(Command("delete_promo"))
+async def delete_promo(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите код промокода: /delete_promo SUMMER10")
+        return
+    code = args[1].strip().upper()
+    result = await promocodes_col.delete_one({"code": code})
+    if result.deleted_count:
+        log_admin_action(message.from_user.id, f"Удалил промокод {code}")
+        await message.answer(f"✅ Промокод {code} удалён.")
+    else:
+        await message.answer(f"❌ Промокод {code} не найден.")
+
+# ==================== СТАТИСТИКА ПОПУЛЯРНОСТИ ====================
+@dp.message(Command("popular"))
+async def cmd_popular(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    pipeline = [
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id": "$items.name",
+            "total_quantity": {"$sum": "$items.quantity"},
+            "total_revenue": {"$sum": {"$multiply": ["$items.price", "$items.quantity"]}}
+        }},
+        {"$sort": {"total_quantity": -1}},
+        {"$limit": 10}
+    ]
+    cursor = orders_col.aggregate(pipeline)
+    top = await cursor.to_list(length=10)
+    if not top:
+        await message.answer("Нет данных о продажах.")
+        return
+    text = "🔥 <b>Топ-10 товаров по продажам:</b>\n\n"
+    for item in top:
+        text += f"{item['_id']}: {item['total_quantity']} шт., выручка {item['total_revenue']} ₽\n"
+    await message.answer(text)
+
+# ==================== ЭКСПОРТ ВСЕХ ДАННЫХ (БЕКАП) ====================
+@dp.message(Command("backup"))
+async def cmd_backup(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    products = await products_col.find().to_list(length=10000)
+    orders = await orders_col.find().to_list(length=10000)
+    promos = await promocodes_col.find().to_list(length=1000)
+
+    def convert_dates(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return obj
+
+    backup = {
+        "products": [{k: convert_dates(v) for k, v in p.items()} for p in products],
+        "orders": [{k: convert_dates(v) for k, v in o.items()} for o in orders],
+        "promocodes": [{k: convert_dates(v) for k, v in p.items()} for p in promos]
+    }
+    json_str = json.dumps(backup, indent=2, ensure_ascii=False)
+    temp_file = f"/tmp/backup_{message.from_user.id}.json"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        f.write(json_str)
+    await message.answer_document(FSInputFile(temp_file), caption="📦 Резервная копия базы данных")
+    os.remove(temp_file)
+
+# ==================== ВОССТАНОВЛЕНИЕ ИЗ БЕКАПА ====================
+@dp.message(Command("restore"))
+async def cmd_restore(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("⚠️ ВНИМАНИЕ! Это действие удалит все текущие данные и заменит их из загруженного JSON-файла. Отправьте файл backup.json для восстановления.")
+
+@dp.message(F.document)
+async def handle_restore(message: Message, bot: Bot):
+    if not is_admin(message.from_user.id):
+        return
+    if not message.document.file_name.endswith('.json'):
+        await message.answer("❌ Пожалуйста, отправьте файл с расширением .json")
+        return
+
+    file = await bot.get_file(message.document.file_id)
+    file_path = f"/tmp/restore_{message.from_user.id}.json"
+    await bot.download_file(file.file_path, file_path)
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        try:
+            backup = json.load(f)
+        except Exception as e:
+            await message.answer(f"❌ Ошибка парсинга JSON: {e}")
+            return
+
+    # Подтверждение
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтверждаю восстановление", callback_data="confirm_restore")]
+    ])
+    await message.answer("Восстановление удалит все текущие товары, заказы и промокоды. Вы уверены?", reply_markup=kb)
+    # Сохраним путь к файлу в состоянии или глобально (упрощённо – в переменной)
+    # Для простоты используем глобальный словарь (не рекомендуется, но для демо сойдёт)
+    global restore_file
+    restore_file = file_path
+
+@dp.callback_query(lambda c: c.data == "confirm_restore")
+async def confirm_restore(callback: CallbackQuery):
+    global restore_file
+    try:
+        with open(restore_file, 'r', encoding='utf-8') as f:
+            backup = json.load(f)
+        # Очистка коллекций
+        await products_col.delete_many({})
+        await orders_col.delete_many({})
+        await promocodes_col.delete_many({})
+
+        # Восстановление продуктов
+        if 'products' in backup:
+            for p in backup['products']:
+                if 'created_at' in p and isinstance(p['created_at'], str):
+                    p['created_at'] = datetime.fromisoformat(p['created_at'])
+                await products_col.insert_one(p)
+
+        if 'orders' in backup:
+            for o in backup['orders']:
+                if 'created_at' in o and isinstance(o['created_at'], str):
+                    o['created_at'] = datetime.fromisoformat(o['created_at'])
+                await orders_col.insert_one(o)
+
+        if 'promocodes' in backup:
+            for pr in backup['promocodes']:
+                if 'expires_at' in pr and isinstance(pr['expires_at'], str):
+                    pr['expires_at'] = datetime.fromisoformat(pr['expires_at'])
+                await promocodes_col.insert_one(pr)
+
+        await callback.message.edit_text("✅ Восстановление выполнено успешно.")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка при восстановлении: {e}")
+    finally:
+        if os.path.exists(restore_file):
+            os.remove(restore_file)
+    await callback.answer()
+
+# ==================== БЛОКИРОВКА ПОЛЬЗОВАТЕЛЕЙ ====================
+@dp.message(Command("block_user"))
+async def cmd_block_user(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите ID пользователя: /block_user 123456789")
+        return
+    user_id = args[1].strip()
+    # Проверка, не заблокирован ли уже
+    existing = await blocked_users_col.find_one({"user_id": user_id})
+    if existing:
+        await message.answer(f"Пользователь {user_id} уже заблокирован.")
+        return
+    await blocked_users_col.insert_one({"user_id": user_id, "blocked_at": datetime.now()})
+    log_admin_action(message.from_user.id, f"Заблокировал пользователя {user_id}")
+    await message.answer(f"✅ Пользователь {user_id} заблокирован.")
+
+@dp.message(Command("unblock_user"))
+async def cmd_unblock_user(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите ID пользователя: /unblock_user 123456789")
+        return
+    user_id = args[1].strip()
+    result = await blocked_users_col.delete_one({"user_id": user_id})
+    if result.deleted_count:
+        log_admin_action(message.from_user.id, f"Разблокировал пользователя {user_id}")
+        await message.answer(f"✅ Пользователь {user_id} разблокирован.")
+    else:
+        await message.answer(f"❌ Пользователь {user_id} не найден в списке заблокированных.")
+
+@dp.message(Command("list_blocked"))
+async def list_blocked(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cursor = blocked_users_col.find().sort("blocked_at", -1).limit(50)
+    blocked = await cursor.to_list(length=50)
+    if not blocked:
+        await message.answer("Нет заблокированных пользователей.")
+        return
+    text = "🚫 <b>Заблокированные пользователи:</b>\n\n"
+    for b in blocked:
+        text += f"ID: {b['user_id']} (с {b['blocked_at'].strftime('%Y-%m-%d')})\n"
+    await message.answer(text)
+
+# ==================== ЗАКАЗЫ (АДМИН) ====================
+@dp.message(F.text == "📋 Заказы")
+async def show_orders(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cursor = orders_col.find({"status": "new"}).sort("created_at", -1)
+    orders = await cursor.to_list(length=100)
+    if not orders:
+        await message.answer("Новых заказов нет.")
+        return
+    for o in orders:
+        items = o['items']
+        text = f"🛒 Заказ #{o['id']}\n"
+        text += f"Покупатель: {o['user_name']} (ID: {o['user_id']})\n"
+        for item in items:
+            text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
+        text += f"ИТОГО: {o['total']}₽\nСтатус: {o['status']}\n"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"order_done_{o['id']}")]
         ])
         await message.answer(text, reply_markup=kb)
@@ -693,6 +1235,7 @@ async def show_stats(message: Message):
         f"🆕 Новых заказов: {new_orders}"
     )
     await message.answer(text)
+
 
 # ==================== FASTAPI ====================
 @asynccontextmanager
@@ -746,15 +1289,31 @@ async def get_products():
 @app.post("/api/order")
 async def create_order(request: Request):
     order = await request.json()
+    # Применяем промокод, если есть (можно передавать поле promo)
+    total = order['total']
+    promo_code = order.get('promo')
+    discount = 0
+    if promo_code:
+        promo = await promocodes_col.find_one({"code": promo_code})
+        if promo and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
+            if promo['type'] == 'percent':
+                discount = int(total * promo['value'] / 100)
+            else:
+                discount = promo['value']
+            total -= discount
+            await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
+
     order_id = str(uuid.uuid4().hex[:8])
     order_doc = {
         "id": order_id,
         "user_id": order.get('user', 'unknown'),
         "user_name": order.get('user', 'unknown'),
         "items": order['items'],
-        "total": order['total'],
+        "total": total,
         "status": "new",
-        "created_at": datetime.now()
+        "created_at": datetime.now(),
+        "promo_used": promo_code,
+        "discount_applied": discount
     }
     await orders_col.insert_one(order_doc)
     return {"status": "ok", "order_id": order_id}
