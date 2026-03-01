@@ -141,43 +141,42 @@ def get_cancel_keyboard():
 
 def generate_help_text() -> str:
     return """
-<b>📋 Доступные команды администратора</b>
+📋 Доступные команды администратора
 
-<b>📦 Товары</b>
+📦 Товары
 ➕ Добавить товар (кнопка) – пошаговое добавление
 /bulk_add – массовое добавление через CSV
 📦 Товары (кнопка) – просмотр/редактирование товаров
 /search <текст> – поиск товаров по названию
 
-<b>📋 Заказы</b>
+📋 Заказы
 📋 Заказы (кнопка) – новые заказы с управлением статусом
 /orders_all [status=...] [date=ГГГГ-ММ-ДД] – все заказы с фильтрацией
 /find_order <id> – поиск заказа по номеру или ID пользователя
 
-<b>🎟️ Промокоды</b>
+🎟️ Промокоды
 /add_promo – создать промокод
 /list_promo – список промокодов
 /delete_promo <код> – удалить промокод
 
-<b>📊 Статистика</b>
+📊 Статистика
 📊 Статистика (кнопка) – общая статистика
 /stats_detailed – статистика по дням (7 дней)
 /stats_chart – график продаж (30 дней)
 /popular – топ-10 товаров по продажам
 
-<b>🚫 Управление пользователями</b>
+🚫 Управление пользователями
 /block_user <id> – заблокировать пользователя
 /unblock_user <id> – разблокировать
 /list_blocked – список заблокированных
 
-<b>📤 Экспорт / Импорт</b>
+📤 Экспорт / Импорт
 📤 Экспорт CSV (кнопка) – выгрузка товаров в CSV
 /backup – полная резервная копия (JSON)
 /restore – восстановление из JSON (с подтверждением)
 
-<b>❌ Отмена</b> – отмена текущего действия в любом FSM
+❌ Отмена – отмена текущего действия в любом FSM
 """
-    
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -227,7 +226,7 @@ async def cmd_help(message: Message):
     if not is_admin(message.from_user.id):
         return
     help_text = generate_help_text()
-    await message.answer(help_text, parse_mode=ParseMode.HTML)
+    await message.answer(help_text)  # без parse_mode
 # ==================== ОБРАБОТКА ЗАКАЗОВ ИЗ WEB APP ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -1373,4 +1372,5 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
