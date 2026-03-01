@@ -1,12 +1,13 @@
 import asyncio
 import json
 import logging
-import sqlite3
 import uuid
 import os
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+import csv
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
+from io import StringIO
 
 # Импорты aiogram
 from aiogram import Bot, Dispatcher, types, F
@@ -16,7 +17,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+    ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 )
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -26,64 +27,51 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+# MongoDB
+import motor.motor_asyncio
+
 # Дополнительные библиотеки
 import aiofiles
 
 # ==================== НАСТРОЙКИ ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN",)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не задан в переменных окружения!")
+
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
-if not ADMIN_IDS:
-    ADMIN_IDS = []  # Задайте хотя бы один ID через переменную окружения
 
-DB_PATH = "shop.db"
-BASE_URL = os.getenv("WEBHOOK_URL", "https://bot-production-cf41.up.railway.app")  # замени на свой URL
+MONGO_URL = os.getenv("MONGO_URL")
+if not MONGO_URL:
+    raise ValueError("❌ MONGO_URL не задан в переменных окружения!")
 
-# ==================== БАЗА ДАННЫХ ====================
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS products
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  name TEXT NOT NULL,
-                  price INTEGER NOT NULL,
-                  category TEXT NOT NULL,
-                  subcategory TEXT,
-                  discount INTEGER DEFAULT 0,
-                  is_new INTEGER DEFAULT 0,
-                  image TEXT,
-                  created_at TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS orders
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id TEXT,
-                  user_name TEXT,
-                  items TEXT,
-                  total INTEGER,
-                  status TEXT DEFAULT 'new',
-                  created_at TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+BASE_URL = os.getenv("WEBHOOK_URL", "https://your-app.up.railway.app")
 
-init_db()
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
-storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher(storage=storage)
+# Логгер для действий администраторов
+admin_logger = logging.getLogger('admin_actions')
+admin_handler = logging.FileHandler('admin_actions.log', encoding='utf-8')
+admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+admin_logger.addHandler(admin_handler)
+admin_logger.setLevel(logging.INFO)
 
-# ==================== FSM ====================
-class AddProduct(StatesGroup):
-    name = State()
-    price = State()
-    category = State()
-    subcategory = State()
-    discount = State()
-    is_new = State()
-    photo = State()
+# ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+db = client["bau28shop"]
+products_col = db["products"]
+orders_col = db["orders"]
 
-class EditProduct(StatesGroup):
-    choose_field = State()
-    new_value = State()
+async def init_mongodb():
+    """Создание индексов для коллекций."""
+    await products_col.create_index("id", unique=True)
+    await products_col.create_index("category")
+    await products_col.create_index("subcategory")
+    await orders_col.create_index("id", unique=True)
+    await orders_col.create_index("status")
+    logger.info("MongoDB инициализирована.")
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def is_admin(user_id: int) -> bool:
@@ -92,32 +80,18 @@ def is_admin(user_id: int) -> bool:
 def format_price(price: int) -> str:
     return f"{price:,} ₽".replace(",", " ")
 
-def get_product_by_id(product_id: int) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE id=?", (product_id,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return {
-            "id": row[0],
-            "name": row[1],
-            "price": row[2],
-            "category": row[3],
-            "subcategory": row[4],
-            "discount": row[5],
-            "is_new": row[6],
-            "image": row[7],
-            "created_at": row[8]
-        }
-    return None
+async def get_product_by_id(product_id: str) -> Optional[Dict[str, Any]]:
+    return await products_col.find_one({"id": product_id})
+
+def log_admin_action(admin_id: int, action: str):
+    admin_logger.info(f"Admin {admin_id}: {action}")
 
 def get_main_keyboard(is_admin: bool = False):
     if is_admin:
         kb = [
             [KeyboardButton(text="📦 Товары")],
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="➕ Добавить товар")],
+            [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
         ]
     else:
@@ -129,6 +103,26 @@ def get_main_keyboard(is_admin: bool = False):
 def get_cancel_keyboard():
     kb = [[KeyboardButton(text="❌ Отмена")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+# ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
+storage = MemoryStorage()
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher(storage=storage)
+
+# ==================== FSM ====================
+class AddProduct(StatesGroup):
+    name = State()
+    description = State()
+    price = State()
+    category = State()
+    subcategory = State()
+    discount = State()
+    is_new = State()
+    photo = State()
+
+class EditProduct(StatesGroup):
+    choose_field = State()
+    new_value = State()
 
 # ==================== ХЭНДЛЕРЫ БОТА ====================
 
@@ -159,15 +153,17 @@ async def handle_web_app_data(message: Message):
             await message.answer("❌ Корзина пуста. Заказ не оформлен.")
             return
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''INSERT INTO orders (user_id, user_name, items, total, created_at)
-                     VALUES (?, ?, ?, ?, ?)''',
-                  (str(message.from_user.id), message.from_user.full_name,
-                   json.dumps(items), total, datetime.now()))
-        order_id = c.lastrowid
-        conn.commit()
-        conn.close()
+        order_id = str(uuid.uuid4().hex[:8])
+        order_doc = {
+            "id": order_id,
+            "user_id": str(message.from_user.id),
+            "user_name": message.from_user.full_name,
+            "items": items,
+            "total": total,
+            "status": "new",
+            "created_at": datetime.now()
+        }
+        await orders_col.insert_one(order_doc)
 
         receipt = "🧾 <b>Детали заказа:</b>\n\n"
         for item in items:
@@ -190,10 +186,10 @@ async def handle_web_app_data(message: Message):
             try:
                 await bot.send_message(admin_id, admin_msg)
             except Exception as e:
-                logging.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
+                logger.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
 
     except Exception as e:
-        logging.error(f"Ошибка при обработке заказа: {e}")
+        logger.error(f"Ошибка при обработке заказа: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 # ==================== ДОБАВЛЕНИЕ ТОВАРА (ТОЛЬКО АДМИН) ====================
@@ -207,6 +203,12 @@ async def cmd_add(message: Message, state: FSMContext):
 @dp.message(AddProduct.name)
 async def add_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
+    await state.set_state(AddProduct.description)
+    await message.answer("Введите описание товара (можно отправить пустое):")
+
+@dp.message(AddProduct.description)
+async def add_description(message: Message, state: FSMContext):
+    await state.update_data(description=message.text or "")
     await state.set_state(AddProduct.price)
     await message.answer("Введите цену (только число):")
 
@@ -275,22 +277,164 @@ async def add_photo(message: Message, state: FSMContext, bot: Bot):
     await bot.download_file(file.file_path, file_path)
 
     data = await state.get_data()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO products
-                 (name, price, category, subcategory, discount, is_new, image, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-              (data['name'], data['price'], data['category'], data.get('subcategory', ''),
-               data['discount'], data['is_new'], f"/static/uploaded/{filename}", datetime.now()))
-    product_id = c.lastrowid
-    conn.commit()
-    conn.close()
+    product_id = f"p{uuid.uuid4().hex[:8]}"
+    product_doc = {
+        "id": product_id,
+        "name": data['name'],
+        "description": data['description'],
+        "price": data['price'],
+        "category": data['category'],
+        "subcategory": data.get('subcategory', ""),
+        "discount": data['discount'],
+        "is_new": data['is_new'],
+        "image": f"/static/uploaded/{filename}",
+        "created_at": datetime.now()
+    }
+    await products_col.insert_one(product_doc)
+
     await state.clear()
+    log_admin_action(message.from_user.id, f"Добавил товар ID {product_id} ({data['name']})")
     await message.answer(f"✅ Товар добавлен! ID: {product_id}", reply_markup=get_main_keyboard(True))
 
 @dp.message(AddProduct.photo)
 async def add_photo_invalid(message: Message):
     await message.answer("❌ Пожалуйста, отправьте фотографию.")
+
+# ==================== МАССОВОЕ ДОБАВЛЕНИЕ ЧЕРЕЗ CSV ====================
+@dp.message(Command("bulk_add"))
+async def cmd_bulk_add(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Отправьте CSV-файл с товарами.\n"
+                         "Формат: название,описание,цена,категория,подкатегория(если vape),скидка,новинка(0/1)\n"
+                         "Пример: Футболка,Хлопок 100%,2990,clothes,,0,1")
+
+@dp.message(F.document)
+async def handle_csv(message: Message, bot: Bot):
+    if not is_admin(message.from_user.id):
+        return
+    if not message.document.file_name.endswith('.csv'):
+        await message.answer("❌ Пожалуйста, отправьте файл с расширением .csv")
+        return
+
+    file = await bot.get_file(message.document.file_id)
+    file_path = f"/tmp/{message.document.file_id}.csv"
+    await bot.download_file(file.file_path, file_path)
+
+    added = 0
+    errors = []
+    with open(file_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        next(reader, None)
+        for row in reader:
+            try:
+                if len(row) < 7:
+                    errors.append(f"Недостаточно полей: {row}")
+                    continue
+                name, desc, price_str, cat, subcat, discount_str, is_new_str = row
+                price = int(price_str)
+                discount = int(discount_str)
+                is_new = int(is_new_str)
+                subcat = subcat if subcat else ""
+
+                product_id = f"p{uuid.uuid4().hex[:8]}"
+                product_doc = {
+                    "id": product_id,
+                    "name": name,
+                    "description": desc,
+                    "price": price,
+                    "category": cat,
+                    "subcategory": subcat,
+                    "discount": discount,
+                    "is_new": is_new,
+                    "image": "",
+                    "created_at": datetime.now()
+                }
+                await products_col.insert_one(product_doc)
+                added += 1
+            except Exception as e:
+                errors.append(f"Ошибка в строке {row}: {e}")
+
+    os.remove(file_path)
+    result = f"✅ Добавлено товаров: {added}\n"
+    if errors:
+        result += f"❌ Ошибки ({len(errors)}):\n" + "\n".join(errors[:5])
+    log_admin_action(message.from_user.id, f"Массовое добавление: +{added} товаров")
+    await message.answer(result)
+
+# ==================== ЭКСПОРТ ТОВАРОВ В CSV ====================
+@dp.message(F.text == "📤 Экспорт CSV")
+@dp.message(Command("export_products"))
+async def cmd_export_products(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cursor = products_col.find({})
+    products = await cursor.to_list(length=10000)
+
+    if not products:
+        await message.answer("В базе нет товаров.")
+        return
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "image"])
+    for p in products:
+        writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], p.get('image', '')])
+    csv_data = output.getvalue().encode('utf-8')
+    output.close()
+
+    temp_file = f"/tmp/export_{message.from_user.id}.csv"
+    with open(temp_file, "wb") as f:
+        f.write(csv_data)
+    await message.answer_document(FSInputFile(temp_file), caption="📁 Экспорт товаров")
+    os.remove(temp_file)
+
+# ==================== ДЕТАЛЬНАЯ СТАТИСТИКА ====================
+@dp.message(Command("stats_detailed"))
+async def cmd_stats_detailed(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    pipeline = [
+        {"$match": {"created_at": {"$gt": seven_days_ago}}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+            "count": {"$sum": 1},
+            "total": {"$sum": "$total"}
+        }},
+        {"$sort": {"_id": -1}}
+    ]
+    cursor = orders_col.aggregate(pipeline)
+    rows = await cursor.to_list(length=10)
+
+    text = "📊 <b>Статистика по дням (последние 7 дней):</b>\n\n"
+    if rows:
+        for r in rows:
+            text += f"📅 {r['_id']}: заказов {r['count']}, сумма {r['total'] or 0} ₽\n"
+    else:
+        text += "За последние 7 дней заказов нет."
+    await message.answer(text)
+
+# ==================== ПОИСК ТОВАРОВ ====================
+@dp.message(Command("search"))
+async def cmd_search(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите текст для поиска. Например: /search футболка")
+        return
+    query = args[1]
+    cursor = products_col.find({"name": {"$regex": query, "$options": "i"}})
+    results = await cursor.to_list(length=50)
+
+    if not results:
+        await message.answer(f"По запросу «{query}» ничего не найдено.")
+        return
+    text = f"🔍 Найденные товары по запросу «{query}»:\n\n"
+    for p in results:
+        text += f"ID: {p['id']} | {p['name']}\n"
+    await message.answer(text)
 
 # ==================== ПРОСМОТР ТОВАРОВ (АДМИН) ====================
 @dp.message(F.text == "📦 Товары")
@@ -306,13 +450,10 @@ async def show_products_menu(message: Message):
     await message.answer("Выберите категорию:", reply_markup=kb)
 
 async def show_product_list(cat: str, page: int, callback: CallbackQuery):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, name, price, discount FROM products WHERE category=? ORDER BY created_at DESC LIMIT 5 OFFSET ?", (cat, page*5))
-    products = c.fetchall()
-    c.execute("SELECT COUNT(*) FROM products WHERE category=?", (cat,))
-    total = c.fetchone()[0]
-    conn.close()
+    skip = page * 5
+    cursor = products_col.find({"category": cat}).sort("created_at", -1).skip(skip).limit(5)
+    products = await cursor.to_list(length=5)
+    total = await products_col.count_documents({"category": cat})
 
     if not products:
         await callback.message.edit_text("В этой категории пока нет товаров.")
@@ -320,8 +461,9 @@ async def show_product_list(cat: str, page: int, callback: CallbackQuery):
 
     text = f"Товары в категории {cat} (стр. {page+1}):\n\n"
     for p in products:
-        final_price = p[3] if p[3] else p[2]
-        text += f"ID: {p[0]} | {p[1]} | {final_price}₽\n"
+        final_price = p['price'] if not p['discount'] else p['price'] * (100 - p['discount']) // 100
+        desc = p['description'][:50] + "..." if p['description'] and len(p['description']) > 50 else (p['description'] or "без описания")
+        text += f"ID: {p['id']} | {p['name']} | {final_price}₽\n   Описание: {desc}\n\n"
 
     nav_buttons = []
     if page > 0:
@@ -335,8 +477,8 @@ async def show_product_list(cat: str, page: int, callback: CallbackQuery):
 
     for p in products:
         inline_kb.append([
-            InlineKeyboardButton(text=f"✏️ {p[1][:15]}...", callback_data=f"edit_{p[0]}_menu"),
-            InlineKeyboardButton(text="🗑", callback_data=f"del_{p[0]}")
+            InlineKeyboardButton(text=f"✏️ {p['name'][:15]}...", callback_data=f"edit_{p['id']}_menu"),
+            InlineKeyboardButton(text="🗑", callback_data=f"del_{p['id']}")
         ])
 
     inline_kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_categories")])
@@ -357,7 +499,7 @@ async def back_to_categories(callback: CallbackQuery):
 # ==================== УДАЛЕНИЕ ТОВАРА ====================
 @dp.callback_query(lambda c: c.data.startswith("del_"))
 async def delete_product_confirm(callback: CallbackQuery):
-    product_id = int(callback.data.split("_")[1])
+    product_id = callback.data.split("_")[1]
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да", callback_data=f"confirm_del_{product_id}"),
@@ -368,12 +510,11 @@ async def delete_product_confirm(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("confirm_del_"))
 async def confirm_delete(callback: CallbackQuery):
-    product_id = int(callback.data.split("_")[2])
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM products WHERE id=?", (product_id,))
-    conn.commit()
-    conn.close()
+    product_id = callback.data.split("_")[2]
+    product = await get_product_by_id(product_id)
+    name = product['name'] if product else "Unknown"
+    await products_col.delete_one({"id": product_id})
+    log_admin_action(callback.from_user.id, f"Удалил товар ID {product_id} ({name})")
     await callback.message.edit_text(f"✅ Товар ID {product_id} удалён.")
     await callback.answer()
 
@@ -385,14 +526,15 @@ async def cancel_delete(callback: CallbackQuery):
 # ==================== РЕДАКТИРОВАНИЕ ТОВАРА ====================
 @dp.callback_query(lambda c: c.data.startswith("edit_") and c.data.endswith("_menu"))
 async def edit_product_menu(callback: CallbackQuery):
-    product_id = int(callback.data.split("_")[1])
-    product = get_product_by_id(product_id)
+    product_id = callback.data.split("_")[1]
+    product = await get_product_by_id(product_id)
     if not product:
         await callback.message.edit_text("Товар не найден.")
         return
 
     text = f"Редактирование товара ID {product_id}:\n"
     text += f"Название: {product['name']}\n"
+    text += f"Описание: {product['description'][:100]}...\n"
     text += f"Цена: {product['price']}₽\n"
     text += f"Категория: {product['category']}\n"
     if product['subcategory']:
@@ -402,6 +544,7 @@ async def edit_product_menu(callback: CallbackQuery):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{product_id}_field_name")],
+        [InlineKeyboardButton(text="📝 Описание", callback_data=f"edit_{product_id}_field_description")],
         [InlineKeyboardButton(text="💰 Цена", callback_data=f"edit_{product_id}_field_price")],
         [InlineKeyboardButton(text="📁 Категория", callback_data=f"edit_{product_id}_field_category")],
         [InlineKeyboardButton(text="🏷 Скидка", callback_data=f"edit_{product_id}_field_discount")],
@@ -414,12 +557,15 @@ async def edit_product_menu(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data.startswith("edit_") and "field" in c.data)
 async def edit_product_field(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split('_')
-    product_id = int(parts[1])
+    product_id = parts[1]
     field = parts[3]
     await state.update_data(edit_id=product_id, edit_field=field)
     if field == "name":
         await state.set_state(EditProduct.new_value)
         await callback.message.edit_text("Введите новое название:")
+    elif field == "description":
+        await state.set_state(EditProduct.new_value)
+        await callback.message.edit_text("Введите новое описание:")
     elif field == "price":
         await state.set_state(EditProduct.new_value)
         await callback.message.edit_text("Введите новую цену (число):")
@@ -430,15 +576,11 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
         await state.set_state(EditProduct.new_value)
         await callback.message.edit_text("Введите новую скидку (число):")
     elif field == "isnew":
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT is_new FROM products WHERE id=?", (product_id,))
-        row = c.fetchone()
-        if row:
-            new_val = 0 if row[0] else 1
-            c.execute("UPDATE products SET is_new=? WHERE id=?", (new_val, product_id))
-            conn.commit()
-        conn.close()
+        product = await get_product_by_id(product_id)
+        if product:
+            new_val = 0 if product['is_new'] else 1
+            await products_col.update_one({"id": product_id}, {"$set": {"is_new": new_val}})
+            log_admin_action(callback.from_user.id, f"Изменил новинку товара ID {product_id} на {new_val}")
         await callback.message.edit_text("✅ Поле обновлено.")
         await callback.answer()
     elif field == "photo":
@@ -452,27 +594,30 @@ async def edit_text_field(message: Message, state: FSMContext):
     field = data['edit_field']
     new_value = message.text
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    if field in ["price", "discount"] and not new_value.isdigit():
+        await message.answer(f"❌ {field} должно быть числом. Попробуйте ещё раз:")
+        return
+    if field == "category" and new_value not in ['clothes', 'accessories', 'vape', 'electronics']:
+        await message.answer("❌ Неверная категория. Допустимы: clothes, accessories, vape, electronics")
+        return
+
+    update_data = {}
     if field == "name":
-        c.execute("UPDATE products SET name=? WHERE id=?", (new_value, product_id))
+        update_data["name"] = new_value
+    elif field == "description":
+        update_data["description"] = new_value
     elif field == "price":
-        if not new_value.isdigit():
-            await message.answer("❌ Цена должна быть числом. Попробуйте ещё раз:")
-            return
-        c.execute("UPDATE products SET price=? WHERE id=?", (int(new_value), product_id))
+        update_data["price"] = int(new_value)
     elif field == "category":
-        if new_value not in ['clothes', 'accessories', 'vape', 'electronics']:
-            await message.answer("❌ Неверная категория. Допустимы: clothes, accessories, vape, electronics")
-            return
-        c.execute("UPDATE products SET category=?, subcategory=? WHERE id=?", (new_value, None, product_id))
+        update_data["category"] = new_value
+        update_data["subcategory"] = ""  # сбрасываем подкатегорию
     elif field == "discount":
-        if not new_value.isdigit():
-            await message.answer("❌ Скидка должна быть числом. Попробуйте ещё раз:")
-            return
-        c.execute("UPDATE products SET discount=? WHERE id=?", (int(new_value), product_id))
-    conn.commit()
-    conn.close()
+        update_data["discount"] = int(new_value)
+
+    if update_data:
+        await products_col.update_one({"id": product_id}, {"$set": update_data})
+        log_admin_action(message.from_user.id, f"Изменил поле {field} товара ID {product_id} на {new_value}")
+
     await state.clear()
     await message.answer("✅ Поле обновлено.", reply_markup=get_main_keyboard(True))
 
@@ -488,12 +633,9 @@ async def edit_photo(message: Message, state: FSMContext, bot: Bot):
     os.makedirs("static/uploaded", exist_ok=True)
     await bot.download_file(file.file_path, file_path)
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE products SET image=? WHERE id=?", (f"/static/uploaded/{filename}", product_id))
-    conn.commit()
-    conn.close()
+    await products_col.update_one({"id": product_id}, {"$set": {"image": f"/static/uploaded/{filename}"}})
     await state.clear()
+    log_admin_action(message.from_user.id, f"Изменил фото товара ID {product_id}")
     await message.answer("✅ Фото обновлено.", reply_markup=get_main_keyboard(True))
 
 @dp.message(EditProduct.new_value)
@@ -505,34 +647,28 @@ async def edit_invalid(message: Message):
 async def show_orders(message: Message):
     if not is_admin(message.from_user.id):
         return
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE status='new' ORDER BY created_at DESC")
-    orders = c.fetchall()
-    conn.close()
+    cursor = orders_col.find({"status": "new"}).sort("created_at", -1)
+    orders = await cursor.to_list(length=100)
     if not orders:
         await message.answer("Новых заказов нет.")
         return
     for o in orders:
-        items = json.loads(o[3])
-        text = f"🛒 Заказ #{o[0]}\n"
-        text += f"Покупатель: {o[2]} (ID: {o[1]})\n"
+        items = o['items']
+        text = f"🛒 Заказ #{o['id']}\n"
+        text += f"Покупатель: {o['user_name']} (ID: {o['user_id']})\n"
         for item in items:
             text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
-        text += f"ИТОГО: {o[4]}₽\nСтатус: {o[5]}\n"
+        text += f"ИТОГО: {o['total']}₽\nСтатус: {o['status']}\n"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"order_done_{o[0]}")]
+            [InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"order_done_{o['id']}")]
         ])
         await message.answer(text, reply_markup=kb)
 
 @dp.callback_query(lambda c: c.data.startswith("order_done_"))
 async def order_done(callback: CallbackQuery):
-    order_id = int(callback.data.split("_")[2])
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
-    conn.commit()
-    conn.close()
+    order_id = callback.data.split("_")[2]
+    await orders_col.update_one({"id": order_id}, {"$set": {"status": "done"}})
+    log_admin_action(callback.from_user.id, f"Отметил заказ #{order_id} выполненным")
     await callback.message.edit_text(f"✅ Заказ #{order_id} отмечен как выполненный.")
     await callback.answer()
 
@@ -541,17 +677,14 @@ async def order_done(callback: CallbackQuery):
 async def show_stats(message: Message):
     if not is_admin(message.from_user.id):
         return
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM products")
-    total_products = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM orders")
-    total_orders = c.fetchone()[0]
-    c.execute("SELECT SUM(total) FROM orders")
-    total_sales = c.fetchone()[0] or 0
-    c.execute("SELECT COUNT(*) FROM orders WHERE status='new'")
-    new_orders = c.fetchone()[0]
-    conn.close()
+    total_products = await products_col.count_documents({})
+    total_orders = await orders_col.count_documents({})
+    pipeline = [{"$group": {"_id": None, "total_sales": {"$sum": "$total"}}}]
+    cursor = orders_col.aggregate(pipeline)
+    result = await cursor.to_list(length=1)
+    total_sales = result[0]['total_sales'] if result else 0
+    new_orders = await orders_col.count_documents({"status": "new"})
+
     text = (
         f"📊 <b>Статистика магазина</b>\n\n"
         f"📦 Товаров: {total_products}\n"
@@ -562,14 +695,13 @@ async def show_stats(message: Message):
     await message.answer(text)
 
 # ==================== FASTAPI ====================
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Запускаем бота при старте приложения
+    # Запускаем бота
     asyncio.create_task(dp.start_polling(bot))
+    # Инициализируем MongoDB
+    await init_mongodb()
     yield
-    # Останавливаем бота при завершении
     await bot.session.close()
 
 app = FastAPI(lifespan=lifespan)
@@ -585,63 +717,54 @@ app.add_middleware(
 
 @app.get("/api/products")
 async def get_products():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT * FROM products")
-    rows = c.fetchall()
-    conn.close()
-    
+    cursor = products_col.find({})
     products = {}
-    for row in rows:
-        cat = row[3]      # category
-        sub = row[4]      # subcategory
-        image = row[7]    # image path
-        full_image_url = f"{BASE_URL}{image}" if image else None
+    async for doc in cursor:
+        cat = doc['category']
+        sub = doc.get('subcategory')
         product = {
-            "id": f"p{row[0]}",
-            "name": row[1],
-            "price": row[2],
-            "discount": row[5],
-            "isNew": bool(row[6]),
-            "img": full_image_url or "/static/uploaded/default.jpg"
+            "id": doc['id'],
+            "name": doc['name'],
+            "description": doc.get('description', ''),
+            "price": doc['price'],
+            "discount": doc.get('discount', 0),
+            "isNew": doc.get('is_new', False),
+            "img": f"{BASE_URL}{doc['image']}" if doc.get('image') else "/static/uploaded/default.jpg"
         }
         if cat == "vape":
-            if sub not in products.get("vape", {}):
-                products.setdefault("vape", {})[sub] = []
-            products["vape"][sub].append(product)
+            if cat not in products:
+                products[cat] = {}
+            if sub not in products[cat]:
+                products[cat][sub] = []
+            products[cat][sub].append(product)
         else:
-            products.setdefault(cat, []).append(product)
+            if cat not in products:
+                products[cat] = []
+            products[cat].append(product)
     return products
 
 @app.post("/api/order")
 async def create_order(request: Request):
     order = await request.json()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO orders 
-                 (user_id, user_name, items, total, created_at)
-                 VALUES (?, ?, ?, ?, ?)''',
-              (order.get('user', 'unknown'), order.get('user', 'unknown'),
-               json.dumps(order['items']), order['total'], datetime.now()))
-    order_id = c.lastrowid
-    conn.commit()
-    conn.close()
+    order_id = str(uuid.uuid4().hex[:8])
+    order_doc = {
+        "id": order_id,
+        "user_id": order.get('user', 'unknown'),
+        "user_name": order.get('user', 'unknown'),
+        "items": order['items'],
+        "total": order['total'],
+        "status": "new",
+        "created_at": datetime.now()
+    }
+    await orders_col.insert_one(order_doc)
     return {"status": "ok", "order_id": order_id}
 
 from fastapi.staticfiles import StaticFiles
-import os
 
-# Убедись, что папка существует
 os.makedirs("static/uploaded", exist_ok=True)
-
-# Монтируем папку static, чтобы файлы были доступны по URL /static/...
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
