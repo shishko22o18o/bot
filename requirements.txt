@@ -1,5 +1,0 @@
-aiogram
-fastapi
-uvicorn[standard]
-aiofiles
-python-multipart
