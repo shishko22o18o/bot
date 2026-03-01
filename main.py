@@ -602,7 +602,7 @@ async def get_products():
             "price": row[2],
             "discount": row[5],
             "isNew": bool(row[6]),
-            "img": full_image_url or "images/tovary/default.jpg"
+            "img": full_image_url or "images/default.jpg"
         }
         if cat == "vape":
             if sub not in products.get("vape", {}):
@@ -631,3 +631,4 @@ async def create_order(request: Request):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
