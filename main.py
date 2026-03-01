@@ -126,6 +126,7 @@ def get_main_keyboard(is_admin: bool = False):
             [KeyboardButton(text="📦 Товары")],
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
+            [KeyboardButton(text="ℹ️ Команды")],  # новая кнопка
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
         ]
     else:
@@ -138,6 +139,45 @@ def get_cancel_keyboard():
     kb = [[KeyboardButton(text="❌ Отмена")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
+def generate_help_text() -> str:
+    return """
+<b>📋 Доступные команды администратора</b>
+
+<b>📦 Товары</b>
+➕ Добавить товар (кнопка) – пошаговое добавление
+/bulk_add – массовое добавление через CSV
+📦 Товары (кнопка) – просмотр/редактирование товаров
+/search <текст> – поиск товаров по названию
+
+<b>📋 Заказы</b>
+📋 Заказы (кнопка) – новые заказы с управлением статусом
+/orders_all [status=...] [date=ГГГГ-ММ-ДД] – все заказы с фильтрацией
+/find_order <id> – поиск заказа по номеру или ID пользователя
+
+<b>🎟️ Промокоды</b>
+/add_promo – создать промокод
+/list_promo – список промокодов
+/delete_promo <код> – удалить промокод
+
+<b>📊 Статистика</b>
+📊 Статистика (кнопка) – общая статистика
+/stats_detailed – статистика по дням (7 дней)
+/stats_chart – график продаж (30 дней)
+/popular – топ-10 товаров по продажам
+
+<b>🚫 Управление пользователями</b>
+/block_user <id> – заблокировать пользователя
+/unblock_user <id> – разблокировать
+/list_blocked – список заблокированных
+
+<b>📤 Экспорт / Импорт</b>
+📤 Экспорт CSV (кнопка) – выгрузка товаров в CSV
+/backup – полная резервная копия (JSON)
+/restore – восстановление из JSON (с подтверждением)
+
+<b>❌ Отмена</b> – отмена текущего действия в любом FSM
+"""
+    
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -182,6 +222,12 @@ async def cancel_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено.", reply_markup=get_main_keyboard(is_admin(message.from_user.id)))
 
+@dp.message(F.text == "ℹ️ Команды")
+async def cmd_help(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    help_text = generate_help_text()
+    await message.answer(help_text, parse_mode=ParseMode.HTML)
 # ==================== ОБРАБОТКА ЗАКАЗОВ ИЗ WEB APP ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -1327,3 +1373,4 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
