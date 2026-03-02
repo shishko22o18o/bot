@@ -35,7 +35,7 @@ import certifi
 # Дополнительные библиотеки
 import aiofiles
 
-# Для графика (если не нужно – удалите)
+# Для графика
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -85,12 +85,10 @@ products_col = db["products"]
 orders_col = db["orders"]
 promocodes_col = db["promocodes"]
 blocked_users_col = db["blocked_users"]
-wheel_prizes_col = db["wheel_prizes"]   # призы колеса
-wheel_promos_col = db["wheel_promos"]   # промокоды, активирующие колесо (можно объединить с promocodes, добавив поле type)
+wheel_prizes_col = db["wheel_prizes"]
 
 async def init_mongodb():
     """Создание индексов для коллекций."""
-    # Проверка соединения
     try:
         await client.admin.command('ping')
         logger.info("✅ MongoDB ping successful")
@@ -108,7 +106,6 @@ async def init_mongodb():
     await promocodes_col.create_index("expires_at")
     await blocked_users_col.create_index("user_id", unique=True)
     await wheel_prizes_col.create_index("id", unique=True)
-    await wheel_promos_col.create_index("code", unique=True)
     logger.info("MongoDB инициализирована.")
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -130,7 +127,7 @@ def get_main_keyboard(is_admin: bool = False):
             [KeyboardButton(text="📦 Товары")],
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
-            [KeyboardButton(text="ℹ️ Команды")],  # новая кнопка
+            [KeyboardButton(text="ℹ️ Команды")],
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
         ]
     else:
@@ -203,12 +200,18 @@ class EditProduct(StatesGroup):
 
 class AddPromo(StatesGroup):
     code = State()
-    promo_type = State()   # 'discount' или 'wheel'
-    discount_type = State()   # если discount
-    value = State()
+    promo_type = State()          # 'discount' или 'wheel'
+    discount_type = State()        # 'percent' или 'fixed' (если promo_type == 'discount')
+    value = State()                # для discount – значение скидки
     expires = State()
     max_uses = State()
-   
+
+class WheelPrize(StatesGroup):
+    description = State()
+    type = State()                 # discount_percent, discount_fixed, bonus_points, free_shipping
+    value = State()
+    probability = State()
+
 # ==================== ХЭНДЛЕРЫ БОТА ====================
 
 @dp.message(CommandStart())
@@ -231,7 +234,8 @@ async def cmd_help(message: Message):
     if not is_admin(message.from_user.id):
         return
     help_text = generate_help_text()
-    await message.answer(help_text, parse_mode=None)  # отключаем HTML для этого сообщения
+    await message.answer(help_text, parse_mode=None)
+
 # ==================== ОБРАБОТКА ЗАКАЗОВ ИЗ WEB APP ====================
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -245,23 +249,24 @@ async def handle_web_app_data(message: Message):
         data = json.loads(message.web_app_data.data)
         items = data.get('items', [])
         total = data.get('total', 0)
-        promo_code = data.get('promo')  # если клиент отправил промокод
+        promo_code = data.get('promo')
 
         if not items:
             await message.answer("❌ Корзина пуста. Заказ не оформлен.")
             return
 
-        # Применение промокода, если он есть
         discount = 0
         if promo_code:
             promo = await promocodes_col.find_one({"code": promo_code})
             if promo and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
-                if promo['type'] == 'percent':
-                    discount = int(total * promo['value'] / 100)
-                else:
-                    discount = promo['value']
-                total -= discount
-                await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
+                if promo.get('type') == 'discount':
+                    if promo['discount_type'] == 'percent':
+                        discount = int(total * promo['value'] / 100)
+                    else:
+                        discount = promo['value']
+                    total -= discount
+                    await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
+                # Если промокод типа 'wheel' – игнорируем здесь (активирует колесо на фронте)
 
         order_id = str(uuid.uuid4().hex[:8])
         order_doc = {
@@ -306,7 +311,7 @@ async def handle_web_app_data(message: Message):
         logger.error(f"Ошибка при обработке заказа: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-# ==================== ДОБАВЛЕНИЕ ТОВАРА (ТОЛЬКО АДМИН) ====================
+# ==================== ДОБАВЛЕНИЕ ТОВАРА ====================
 @dp.message(F.text == "➕ Добавить товар")
 async def cmd_add(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -503,7 +508,6 @@ async def cmd_export_products(message: Message):
     await message.answer_document(FSInputFile(temp_file), caption="📁 Экспорт товаров")
     os.remove(temp_file)
 
-
 # ==================== ДЕТАЛЬНАЯ СТАТИСТИКА ====================
 @dp.message(Command("stats_detailed"))
 async def cmd_stats_detailed(message: Message):
@@ -530,38 +534,13 @@ async def cmd_stats_detailed(message: Message):
         text += "За последние 7 дней заказов нет."
     await message.answer(text)
 
-@dp.message(Command("stats_detailed"))
-async def cmd_stats_detailed(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    seven_days_ago = datetime.now() - timedelta(days=7)
-    pipeline = [
-        {"$match": {"created_at": {"$gt": seven_days_ago}}},
-        {"$group": {
-            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
-            "count": {"$sum": 1},
-            "total": {"$sum": "$total"}
-        }},
-        {"$sort": {"_id": -1}}
-    ]
-    cursor = orders_col.aggregate(pipeline)
-    rows = await cursor.to_list(length=10)
-
-    text = "📊 <b>Статистика по дням (последние 7 дней):</b>\n\n"
-    if rows:
-        for r in rows:
-            text += f"📅 {r['_id']}: заказов {r['count']}, сумма {r['total'] or 0} ₽\n"
-    else:
-        text += "За последние 7 дней заказов нет."
-    await message.answer(text)
-
-# ==================== ГРАФИК СТАТИСТИКИ (если есть matplotlib) ====================
+# ==================== ГРАФИК СТАТИСТИКИ ====================
 @dp.message(Command("stats_chart"))
 async def cmd_stats_chart(message: Message):
     if not is_admin(message.from_user.id):
         return
     if not MATPLOTLIB_AVAILABLE:
-        await message.answer("❌ Библиотека matplotlib не установлена. Установите её для использования этой команды.")
+        await message.answer("❌ Библиотека matplotlib не установлена.")
         return
 
     thirty_days_ago = datetime.now() - timedelta(days=30)
@@ -855,7 +834,6 @@ async def show_orders(message: Message):
 async def show_all_orders(message: Message):
     if not is_admin(message.from_user.id):
         return
-    # Фильтры: ?status=done,?from=2025-01-01
     args = message.text.split()
     filter_status = None
     filter_date = None
@@ -901,7 +879,6 @@ async def find_order(message: Message):
         await message.answer("Укажите номер заказа или ID пользователя: /find_order 123456")
         return
     query = args[1]
-    # Сначала ищем по номеру заказа
     order = await orders_col.find_one({"id": query})
     if order:
         items = order['items']
@@ -913,7 +890,6 @@ async def find_order(message: Message):
         text += f"ИТОГО: {order['total']}₽"
         await message.answer(text)
         return
-    # Если не нашли, ищем по user_id
     cursor = orders_col.find({"user_id": query}).sort("created_at", -1).limit(5)
     orders = await cursor.to_list(length=5)
     if orders:
@@ -936,7 +912,6 @@ async def change_order_status(callback: CallbackQuery):
     new_status = parts[3]
     await orders_col.update_one({"id": order_id}, {"$set": {"status": new_status}})
     log_admin_action(callback.from_user.id, f"Изменил статус заказа #{order_id} на {new_status}")
-    # Уведомление клиенту
     order = await orders_col.find_one({"id": order_id})
     if order:
         user_id = int(order['user_id'])
@@ -963,16 +938,31 @@ async def promo_code(message: Message, state: FSMContext):
         await message.answer("❌ Такой код уже существует. Введите другой:")
         return
     await state.update_data(code=code)
-    await state.set_state(AddPromo.type)
-    await message.answer("Выберите тип скидки: percent / fixed")
+    await state.set_state(AddPromo.promo_type)
+    await message.answer("Выберите тип промокода: discount / wheel")
 
-@dp.message(AddPromo.type)
-async def promo_type(message: Message, state: FSMContext):
+@dp.message(AddPromo.promo_type)
+async def promo_type_handler(message: Message, state: FSMContext):
+    t = message.text.lower()
+    if t not in ['discount', 'wheel']:
+        await message.answer("❌ Допустимо: discount или wheel. Попробуйте ещё раз:")
+        return
+    await state.update_data(promo_type=t)
+    if t == 'discount':
+        await state.set_state(AddPromo.discount_type)
+        await message.answer("Выберите тип скидки: percent / fixed")
+    else:
+        # Для wheel сразу переходим к сроку действия
+        await state.set_state(AddPromo.expires)
+        await message.answer("Введите дату окончания в формате ГГГГ-ММ-ДД (или 'never' для бессрочного):")
+
+@dp.message(AddPromo.discount_type)
+async def promo_discount_type(message: Message, state: FSMContext):
     t = message.text.lower()
     if t not in ['percent', 'fixed']:
         await message.answer("❌ Допустимо: percent или fixed. Попробуйте ещё раз:")
         return
-    await state.update_data(type=t)
+    await state.update_data(discount_type=t)
     await state.set_state(AddPromo.value)
     await message.answer("Введите размер скидки (для percent – число от 1 до 100, для fixed – сумма в рублях):")
 
@@ -984,6 +974,10 @@ async def promo_value(message: Message, state: FSMContext):
             raise ValueError
     except ValueError:
         await message.answer("❌ Введите положительное целое число.")
+        return
+    data = await state.get_data()
+    if data.get('promo_type') == 'discount' and data.get('discount_type') == 'percent' and value > 100:
+        await message.answer("❌ Процент не может быть больше 100.")
         return
     await state.update_data(value=value)
     await state.set_state(AddPromo.expires)
@@ -1018,15 +1012,22 @@ async def promo_max_uses(message: Message, state: FSMContext):
     data = await state.get_data()
     promo_doc = {
         "code": data['code'],
-        "type": data['type'],
-        "value": data['value'],
+        "type": data['promo_type'],          # 'discount' или 'wheel'
+        "created_at": datetime.now()
+    }
+    if data['promo_type'] == 'discount':
+        promo_doc.update({
+            "discount_type": data['discount_type'],
+            "value": data['value']
+        })
+    promo_doc.update({
         "expires_at": data['expires'],
         "max_uses": max_uses,
         "used_count": 0
-    }
+    })
     await promocodes_col.insert_one(promo_doc)
     await state.clear()
-    log_admin_action(message.from_user.id, f"Создал промокод {data['code']}")
+    log_admin_action(message.from_user.id, f"Создал промокод {data['code']} типа {data['promo_type']}")
     await message.answer(f"✅ Промокод {data['code']} создан.", reply_markup=get_main_keyboard(True))
 
 @dp.message(Command("list_promo"))
@@ -1041,7 +1042,11 @@ async def list_promo(message: Message):
     text = "🎟️ <b>Активные промокоды:</b>\n\n"
     for p in promos:
         expires = p['expires_at'].strftime("%Y-%m-%d") if p['expires_at'] < datetime(9999,12,31) else "бессрочно"
-        text += f"<b>{p['code']}</b> – {'%' if p['type']=='percent' else '₽'} {p['value']}, осталось: {p['max_uses'] - p['used_count']}/{p['max_uses']}, до {expires}\n"
+        if p['type'] == 'discount':
+            discount_info = f"{'%' if p['discount_type']=='percent' else '₽'} {p['value']}"
+        else:
+            discount_info = "активирует колесо"
+        text += f"<b>{p['code']}</b> – {discount_info}, осталось: {p['max_uses'] - p['used_count']}/{p['max_uses']}, до {expires}\n"
     await message.answer(text)
 
 @dp.message(Command("delete_promo"))
@@ -1137,13 +1142,11 @@ async def handle_restore(message: Message, bot: Bot):
             await message.answer(f"❌ Ошибка парсинга JSON: {e}")
             return
 
-    # Подтверждение
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Подтверждаю восстановление", callback_data="confirm_restore")]
     ])
     await message.answer("Восстановление удалит все текущие товары, заказы и промокоды. Вы уверены?", reply_markup=kb)
-    # Сохраним путь к файлу в состоянии или глобально (упрощённо – в переменной)
-    # Для простоты используем глобальный словарь (не рекомендуется, но для демо сойдёт)
+    # Временно сохраним путь (для простоты используем глобальную переменную)
     global restore_file
     restore_file = file_path
 
@@ -1158,7 +1161,6 @@ async def confirm_restore(callback: CallbackQuery):
         await orders_col.delete_many({})
         await promocodes_col.delete_many({})
 
-        # Восстановление продуктов
         if 'products' in backup:
             for p in backup['products']:
                 if 'created_at' in p and isinstance(p['created_at'], str):
@@ -1195,7 +1197,6 @@ async def cmd_block_user(message: Message):
         await message.answer("Укажите ID пользователя: /block_user 123456789")
         return
     user_id = args[1].strip()
-    # Проверка, не заблокирован ли уже
     existing = await blocked_users_col.find_one({"user_id": user_id})
     if existing:
         await message.answer(f"Пользователь {user_id} уже заблокирован.")
@@ -1234,65 +1235,7 @@ async def list_blocked(message: Message):
         text += f"ID: {b['user_id']} (с {b['blocked_at'].strftime('%Y-%m-%d')})\n"
     await message.answer(text)
 
-# ==================== ЗАКАЗЫ (АДМИН) ====================
-@dp.message(F.text == "📋 Заказы")
-async def show_orders(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    cursor = orders_col.find({"status": "new"}).sort("created_at", -1)
-    orders = await cursor.to_list(length=100)
-    if not orders:
-        await message.answer("Новых заказов нет.")
-        return
-    for o in orders:
-        items = o['items']
-        text = f"🛒 Заказ #{o['id']}\n"
-        text += f"Покупатель: {o['user_name']} (ID: {o['user_id']})\n"
-        for item in items:
-            text += f"  • {item['name']} x{item['quantity']} = {item['price']*item['quantity']}₽\n"
-        text += f"ИТОГО: {o['total']}₽\nСтатус: {o['status']}\n"
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"order_done_{o['id']}")]
-        ])
-        await message.answer(text, reply_markup=kb)
-
-@dp.callback_query(lambda c: c.data.startswith("order_done_"))
-async def order_done(callback: CallbackQuery):
-    order_id = callback.data.split("_")[2]
-    await orders_col.update_one({"id": order_id}, {"$set": {"status": "done"}})
-    log_admin_action(callback.from_user.id, f"Отметил заказ #{order_id} выполненным")
-    await callback.message.edit_text(f"✅ Заказ #{order_id} отмечен как выполненный.")
-    await callback.answer()
-
-# ==================== СТАТИСТИКА (АДМИН) ====================
-@dp.message(F.text == "📊 Статистика")
-async def show_stats(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    total_products = await products_col.count_documents({})
-    total_orders = await orders_col.count_documents({})
-    pipeline = [{"$group": {"_id": None, "total_sales": {"$sum": "$total"}}}]
-    cursor = orders_col.aggregate(pipeline)
-    result = await cursor.to_list(length=1)
-    total_sales = result[0]['total_sales'] if result else 0
-    new_orders = await orders_col.count_documents({"status": "new"})
-
-    text = (
-        f"📊 <b>Статистика магазина</b>\n\n"
-        f"📦 Товаров: {total_products}\n"
-        f"🛒 Всего заказов: {total_orders}\n"
-        f"💰 Сумма продаж: {total_sales} ₽\n"
-        f"🆕 Новых заказов: {new_orders}"
-    )
-    await message.answer(text)
-
 # ==================== УПРАВЛЕНИЕ ПРИЗАМИ КОЛЕСА ====================
-class WheelPrize(StatesGroup):
-    description = State()
-    type = State()      # discount_percent, discount_fixed, bonus_points, free_shipping
-    value = State()
-    probability = State()  # опционально, вес приза
-
 @dp.message(Command("wheel_prizes"))
 async def cmd_wheel_prizes(message: Message):
     if not is_admin(message.from_user.id):
@@ -1407,13 +1350,11 @@ async def cmd_del_prize(message: Message):
 @dp.callback_query(lambda c: c.data == "wheel_back")
 async def wheel_back(callback: CallbackQuery):
     await cmd_wheel_prizes(callback.message)
-    
+
 # ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Запускаем бота
     asyncio.create_task(dp.start_polling(bot))
-    # Инициализируем MongoDB
     await init_mongodb()
     yield
     await bot.session.close()
@@ -1460,14 +1401,13 @@ async def get_products():
 @app.post("/api/order")
 async def create_order(request: Request):
     order = await request.json()
-    # Применяем промокод, если есть (можно передавать поле promo)
     total = order['total']
     promo_code = order.get('promo')
     discount = 0
     if promo_code:
         promo = await promocodes_col.find_one({"code": promo_code})
-        if promo and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
-            if promo['type'] == 'percent':
+        if promo and promo.get('type') == 'discount' and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
+            if promo['discount_type'] == 'percent':
                 discount = int(total * promo['value'] / 100)
             else:
                 discount = promo['value']
@@ -1513,20 +1453,14 @@ async def check_promo(request: Request):
         if promo.get('used_count', 0) >= promo.get('max_uses', 0):
             return {"valid": False, "error": "Промокод больше недействителен"}
 
-        # Определяем тип промокода
-        promo_type = promo.get('type', 'discount')  # по умолчанию discount
-        if promo_type == 'wheel':
-            return {
-                "valid": True,
-                "type": "wheel",
-                "code": code
-            }
+        if promo['type'] == 'wheel':
+            return {"valid": True, "type": "wheel", "code": code}
         else:
             return {
                 "valid": True,
                 "type": "discount",
                 "discount": promo['value'],
-                "discount_type": promo.get('discount_type', 'percent'),
+                "discount_type": promo['discount_type'],
                 "code": code
             }
     except Exception as e:
@@ -1537,7 +1471,6 @@ async def check_promo(request: Request):
 async def get_wheel_prizes():
     cursor = wheel_prizes_col.find({})
     prizes = await cursor.to_list(length=100)
-    # Преобразуем для клиента
     result = []
     for p in prizes:
         result.append({
@@ -1548,14 +1481,8 @@ async def get_wheel_prizes():
             "probability": p.get('probability', 1)
         })
     return result
-    
+
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
-
