@@ -129,11 +129,12 @@ def get_main_keyboard(is_admin: bool = False):
             [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
             [KeyboardButton(text="ℹ️ Команды")],
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
-            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://ilyaivan4encko-ux.github.io/Clicker-on-space-/"))]
+            [KeyboardButton(text="Игрушка ;)", web_app=types.WebAppInfo(url="https://ilyaivan4encko-ux.github.io/Clicker-on-space-/"))]
         ]
     else:
         kb = [
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
+             [KeyboardButton(text="Игрушка ;)", web_app=types.WebAppInfo(url="https://ilyaivan4encko-ux.github.io/Clicker-on-space-/"))]
         ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -1487,4 +1488,5 @@ async def get_wheel_prizes():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
