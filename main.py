@@ -85,6 +85,8 @@ products_col = db["products"]
 orders_col = db["orders"]
 promocodes_col = db["promocodes"]
 blocked_users_col = db["blocked_users"]
+wheel_prizes_col = db["wheel_prizes"]   # призы колеса
+wheel_promos_col = db["wheel_promos"]   # промокоды, активирующие колесо (можно объединить с promocodes, добавив поле type)
 
 async def init_mongodb():
     """Создание индексов для коллекций."""
@@ -105,6 +107,8 @@ async def init_mongodb():
     await promocodes_col.create_index("code", unique=True)
     await promocodes_col.create_index("expires_at")
     await blocked_users_col.create_index("user_id", unique=True)
+    await wheel_prizes_col.create_index("id", unique=True)
+await wheel_promos_col.create_index("code", unique=True)
     logger.info("MongoDB инициализирована.")
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -199,11 +203,12 @@ class EditProduct(StatesGroup):
 
 class AddPromo(StatesGroup):
     code = State()
-    type = State()
+    promo_type = State()   # 'discount' или 'wheel'
+    discount_type = State()   # если discount
     value = State()
     expires = State()
     max_uses = State()
-
+   
 # ==================== ХЭНДЛЕРЫ БОТА ====================
 
 @dp.message(CommandStart())
@@ -1281,7 +1286,128 @@ async def show_stats(message: Message):
     )
     await message.answer(text)
 
+# ==================== УПРАВЛЕНИЕ ПРИЗАМИ КОЛЕСА ====================
+class WheelPrize(StatesGroup):
+    description = State()
+    type = State()      # discount_percent, discount_fixed, bonus_points, free_shipping
+    value = State()
+    probability = State()  # опционально, вес приза
 
+@dp.message(Command("wheel_prizes"))
+async def cmd_wheel_prizes(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить приз", callback_data="wheel_add_prize")],
+        [InlineKeyboardButton(text="📋 Список призов", callback_data="wheel_list_prizes")],
+        [InlineKeyboardButton(text="🗑 Удалить приз", callback_data="wheel_del_prize")]
+    ])
+    await message.answer("🎁 Управление призами колеса фортуны:", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data == "wheel_add_prize")
+async def wheel_add_prize_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await state.set_state(WheelPrize.description)
+    await callback.message.answer("Введите описание приза (то, что увидит пользователь):", reply_markup=get_cancel_keyboard())
+    await callback.answer()
+
+@dp.message(WheelPrize.description)
+async def wheel_add_prize_desc(message: Message, state: FSMContext):
+    await state.update_data(description=message.text)
+    await state.set_state(WheelPrize.type)
+    await message.answer("Выберите тип приза: percent / fixed / bonus / shipping", reply_markup=get_cancel_keyboard())
+
+@dp.message(WheelPrize.type)
+async def wheel_add_prize_type(message: Message, state: FSMContext):
+    t = message.text.lower()
+    if t not in ['percent', 'fixed', 'bonus', 'shipping']:
+        await message.answer("❌ Допустимо: percent, fixed, bonus, shipping")
+        return
+    await state.update_data(type=t)
+    await state.set_state(WheelPrize.value)
+    await message.answer("Введите значение (для percent – число 1-100, для fixed – сумма в рублях, для bonus – баллы, для shipping – 1):")
+
+@dp.message(WheelPrize.value)
+async def wheel_add_prize_value(message: Message, state: FSMContext):
+    try:
+        val = int(message.text)
+        if val <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите положительное целое число.")
+        return
+    data = await state.get_data()
+    if data['type'] == 'percent' and val > 100:
+        await message.answer("❌ Процент не может быть больше 100.")
+        return
+    await state.update_data(value=val)
+    await state.set_state(WheelPrize.probability)
+    await message.answer("Введите вес приза (вероятность выпадения, по умолчанию 1). Можно оставить пустым.")
+
+@dp.message(WheelPrize.probability)
+async def wheel_add_prize_prob(message: Message, state: FSMContext):
+    prob = 1
+    if message.text.strip():
+        try:
+            prob = int(message.text)
+            if prob <= 0:
+                raise ValueError
+        except ValueError:
+            await message.answer("❌ Вес должен быть целым положительным числом.")
+            return
+    data = await state.get_data()
+    prize_id = f"wp{uuid.uuid4().hex[:8]}"
+    prize_doc = {
+        "id": prize_id,
+        "description": data['description'],
+        "type": data['type'],
+        "value": data['value'],
+        "probability": prob,
+        "created_at": datetime.now()
+    }
+    await wheel_prizes_col.insert_one(prize_doc)
+    await state.clear()
+    log_admin_action(message.from_user.id, f"Добавил приз колеса {prize_id}")
+    await message.answer(f"✅ Приз добавлен! ID: {prize_id}", reply_markup=get_main_keyboard(True))
+
+@dp.callback_query(lambda c: c.data == "wheel_list_prizes")
+async def wheel_list_prizes(callback: CallbackQuery):
+    cursor = wheel_prizes_col.find().sort("created_at", -1)
+    prizes = await cursor.to_list(length=50)
+    if not prizes:
+        await callback.message.edit_text("Призов пока нет.")
+        return
+    text = "🎁 <b>Призы колеса фортуны:</b>\n\n"
+    for p in prizes:
+        text += f"ID: {p['id']} | {p['description']} | {p['type']} | значение: {p['value']} | вес: {p['probability']}\n"
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="wheel_back")]
+    ]))
+
+@dp.callback_query(lambda c: c.data == "wheel_del_prize")
+async def wheel_del_prize_start(callback: CallbackQuery):
+    await callback.message.edit_text("Введите ID приза для удаления (командой /del_prize <id>):")
+
+@dp.message(Command("del_prize"))
+async def cmd_del_prize(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Укажите ID приза: /del_prize wp123456")
+        return
+    prize_id = args[1].strip()
+    result = await wheel_prizes_col.delete_one({"id": prize_id})
+    if result.deleted_count:
+        log_admin_action(message.from_user.id, f"Удалил приз {prize_id}")
+        await message.answer(f"✅ Приз {prize_id} удалён.")
+    else:
+        await message.answer(f"❌ Приз {prize_id} не найден.")
+
+@dp.callback_query(lambda c: c.data == "wheel_back")
+async def wheel_back(callback: CallbackQuery):
+    await cmd_wheel_prizes(callback.message)
+    
 # ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1370,11 +1496,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.post("/api/check_promo")
 async def check_promo(request: Request):
-    """
-    Проверка промокода без оформления заказа.
-    Ожидает JSON: {"code": "SUMMER10"}
-    Возвращает: {"valid": true, "discount": 10, "type": "percent"} или {"valid": false, "error": "..."}
-    """
     try:
         data = await request.json()
         code = data.get('code', '').strip().upper()
@@ -1392,19 +1513,47 @@ async def check_promo(request: Request):
         if promo.get('used_count', 0) >= promo.get('max_uses', 0):
             return {"valid": False, "error": "Промокод больше недействителен"}
 
-        return {
-            "valid": True,
-            "discount": promo['value'],
-            "type": promo['type'],
-            "code": code
-        }
+        # Определяем тип промокода
+        promo_type = promo.get('type', 'discount')  # по умолчанию discount
+        if promo_type == 'wheel':
+            return {
+                "valid": True,
+                "type": "wheel",
+                "code": code
+            }
+        else:
+            return {
+                "valid": True,
+                "type": "discount",
+                "discount": promo['value'],
+                "discount_type": promo.get('discount_type', 'percent'),
+                "code": code
+            }
     except Exception as e:
         logger.error(f"Ошибка проверки промокода: {e}")
         return {"valid": False, "error": "Ошибка сервера"}
+
+@app.get("/api/wheel/prizes")
+async def get_wheel_prizes():
+    cursor = wheel_prizes_col.find({})
+    prizes = await cursor.to_list(length=100)
+    # Преобразуем для клиента
+    result = []
+    for p in prizes:
+        result.append({
+            "id": p['id'],
+            "description": p['description'],
+            "type": p['type'],
+            "value": p['value'],
+            "probability": p.get('probability', 1)
+        })
+    return result
+    
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
