@@ -1368,10 +1368,44 @@ from fastapi.staticfiles import StaticFiles
 os.makedirs("static/uploaded", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.post("/api/check_promo")
+async def check_promo(request: Request):
+    """
+    Проверка промокода без оформления заказа.
+    Ожидает JSON: {"code": "SUMMER10"}
+    Возвращает: {"valid": true, "discount": 10, "type": "percent"} или {"valid": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        code = data.get('code', '').strip().upper()
+        if not code:
+            return {"valid": False, "error": "Введите код"}
+
+        promo = await promocodes_col.find_one({"code": code})
+        if not promo:
+            return {"valid": False, "error": "Промокод не найден"}
+
+        now = datetime.now()
+        if promo.get('expires_at', now) < now:
+            return {"valid": False, "error": "Срок действия истёк"}
+
+        if promo.get('used_count', 0) >= promo.get('max_uses', 0):
+            return {"valid": False, "error": "Промокод больше недействителен"}
+
+        return {
+            "valid": True,
+            "discount": promo['value'],
+            "type": promo['type'],
+            "code": code
+        }
+    except Exception as e:
+        logger.error(f"Ошибка проверки промокода: {e}")
+        return {"valid": False, "error": "Ошибка сервера"}
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
