@@ -35,7 +35,7 @@ import certifi
 # Дополнительные библиотеки
 import aiofiles
 
-# Для графика
+# Для графика (если нужно)
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -53,6 +53,8 @@ if not BOT_TOKEN:
 
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
+if not ADMIN_IDS:
+    logging.warning("⚠️ ADMIN_IDS не задан! Админ-функции будут недоступны.")
 
 MONGO_URL = os.getenv("MONGO_URL")
 if not MONGO_URL:
@@ -129,17 +131,19 @@ def get_main_keyboard(is_admin: bool = False):
             [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
             [KeyboardButton(text="ℹ️ Команды")],
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
-           
         ]
     else:
         kb = [
             [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"))]
-             
         ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_cancel_keyboard():
     kb = [[KeyboardButton(text="❌ Отмена")]]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+def get_photo_done_keyboard():
+    kb = [[KeyboardButton(text="✅ Готово")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def generate_help_text() -> str:
@@ -162,6 +166,10 @@ def generate_help_text() -> str:
 /list_promo – список промокодов
 /delete_promo [код] – удалить промокод
 
+🎁 Колесо фортуны
+/wheel_prizes – управление призами
+/wheel_add_prize – добавление приза (иконка, описание, тип, значение, вес)
+
 📊 Статистика
 📊 Статистика (кнопка) – общая статистика
 /stats_detailed – статистика по дням (7 дней)
@@ -180,6 +188,7 @@ def generate_help_text() -> str:
 
 ❌ Отмена – отмена текущего действия в любом FSM
 """
+
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -194,7 +203,7 @@ class AddProduct(StatesGroup):
     subcategory = State()
     discount = State()
     is_new = State()
-    photo = State()
+    photos = State()          # ожидание нескольких фото
 
 class EditProduct(StatesGroup):
     choose_field = State()
@@ -210,6 +219,7 @@ class AddPromo(StatesGroup):
 
 class WheelPrize(StatesGroup):
     description = State()
+    icon = State()                 # эмодзи или символ
     type = State()                 # discount_percent, discount_fixed, bonus_points, free_shipping
     value = State()
     probability = State()
@@ -313,7 +323,7 @@ async def handle_web_app_data(message: Message):
         logger.error(f"Ошибка при обработке заказа: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-# ==================== ДОБАВЛЕНИЕ ТОВАРА ====================
+# ==================== ДОБАВЛЕНИЕ ТОВАРА (ТОЛЬКО АДМИН) ====================
 @dp.message(F.text == "➕ Добавить товар")
 async def cmd_add(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -384,11 +394,20 @@ async def add_is_new(message: Message, state: FSMContext):
         return
     is_new = 1 if text in ['да', 'yes'] else 0
     await state.update_data(is_new=is_new)
-    await state.set_state(AddProduct.photo)
-    await message.answer("Теперь отправьте фотографию товара:")
+    # Инициализируем список фото
+    await state.update_data(photos=[])
+    await state.set_state(AddProduct.photos)
+    await message.answer(
+        "Теперь отправляйте фотографии товара по одной.\n"
+        "Когда закончите, нажмите кнопку '✅ Готово'.",
+        reply_markup=get_photo_done_keyboard()
+    )
 
-@dp.message(AddProduct.photo, F.photo)
+@dp.message(AddProduct.photos, F.photo)
 async def add_photo(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    photos = data.get('photos', [])
+
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
     ext = file.file_path.split('.')[-1] if '.' in file.file_path else 'jpg'
@@ -397,7 +416,22 @@ async def add_photo(message: Message, state: FSMContext, bot: Bot):
     os.makedirs("static/uploaded", exist_ok=True)
     await bot.download_file(file.file_path, file_path)
 
+    photos.append(f"/static/uploaded/{filename}")
+    await state.update_data(photos=photos)
+
+    await message.answer(
+        f"✅ Фото добавлено! Всего фото: {len(photos)}.\n"
+        "Отправьте ещё или нажмите '✅ Готово'.",
+        reply_markup=get_photo_done_keyboard()
+    )
+
+@dp.message(AddProduct.photos, F.text.in_(['✅ Готово', '/done']))
+async def add_photos_done(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
+    photos = data.get('photos', [])
+    if not photos:
+        photos = []  # оставляем пустым, фронт покажет заглушку
+
     product_id = f"p{uuid.uuid4().hex[:8]}"
     product_doc = {
         "id": product_id,
@@ -408,18 +442,24 @@ async def add_photo(message: Message, state: FSMContext, bot: Bot):
         "subcategory": data.get('subcategory', ""),
         "discount": data['discount'],
         "is_new": data['is_new'],
-        "image": f"/static/uploaded/{filename}",
+        "images": photos,
         "created_at": datetime.now()
     }
     await products_col.insert_one(product_doc)
 
     await state.clear()
     log_admin_action(message.from_user.id, f"Добавил товар ID {product_id} ({data['name']})")
-    await message.answer(f"✅ Товар добавлен! ID: {product_id}", reply_markup=get_main_keyboard(True))
+    await message.answer(
+        f"✅ Товар добавлен! ID: {product_id}",
+        reply_markup=get_main_keyboard(True)
+    )
 
-@dp.message(AddProduct.photo)
-async def add_photo_invalid(message: Message):
-    await message.answer("❌ Пожалуйста, отправьте фотографию.")
+@dp.message(AddProduct.photos)
+async def add_photos_invalid(message: Message):
+    await message.answer(
+        "❌ Пожалуйста, отправьте фотографию или нажмите '✅ Готово'.",
+        reply_markup=get_photo_done_keyboard()
+    )
 
 # ==================== МАССОВОЕ ДОБАВЛЕНИЕ ЧЕРЕЗ CSV ====================
 @dp.message(Command("bulk_add"))
@@ -446,7 +486,7 @@ async def handle_csv(message: Message, bot: Bot):
     errors = []
     with open(file_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
-        next(reader, None)
+        next(reader, None)  # пропустить заголовок
         for row in reader:
             try:
                 if len(row) < 7:
@@ -468,7 +508,7 @@ async def handle_csv(message: Message, bot: Bot):
                     "subcategory": subcat,
                     "discount": discount,
                     "is_new": is_new,
-                    "image": "",
+                    "images": [],
                     "created_at": datetime.now()
                 }
                 await products_col.insert_one(product_doc)
@@ -498,9 +538,11 @@ async def cmd_export_products(message: Message):
 
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "image"])
+    writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "images"])
     for p in products:
-        writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], p.get('image', '')])
+        # images – список, преобразуем в строку через запятую
+        images_str = ','.join(p.get('images', []))
+        writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], images_str])
     csv_data = output.getvalue().encode('utf-8')
     output.close()
 
@@ -677,6 +719,13 @@ async def confirm_delete(callback: CallbackQuery):
     product_id = callback.data.split("_")[2]
     product = await get_product_by_id(product_id)
     name = product['name'] if product else "Unknown"
+    # Удаляем файлы изображений
+    if product and 'images' in product:
+        for img_path in product['images']:
+            if img_path.startswith('/static/uploaded/'):
+                local_path = img_path.replace('/static/uploaded/', 'static/uploaded/')
+                if os.path.exists(local_path):
+                    os.remove(local_path)
     await products_col.delete_one({"id": product_id})
     log_admin_action(callback.from_user.id, f"Удалил товар ID {product_id} ({name})")
     await callback.message.edit_text(f"✅ Товар ID {product_id} удалён.")
@@ -688,6 +737,8 @@ async def cancel_delete(callback: CallbackQuery):
     await cmd_start(callback.message)
 
 # ==================== РЕДАКТИРОВАНИЕ ТОВАРА ====================
+# (здесь оставляем без изменений, но при редактировании фото нужно учесть множественные фото – можно доработать позже)
+
 @dp.callback_query(lambda c: c.data.startswith("edit_") and c.data.endswith("_menu"))
 async def edit_product_menu(callback: CallbackQuery):
     product_id = callback.data.split("_")[1]
@@ -748,8 +799,9 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("✅ Поле обновлено.")
         await callback.answer()
     elif field == "photo":
+        # Здесь можно реализовать замену фото (одного или нескольких). Для простоты оставим как замену одного.
         await state.set_state(EditProduct.new_value)
-        await callback.message.edit_text("Отправьте новое фото:")
+        await callback.message.edit_text("Отправьте новое фото (старое будет удалено):")
 
 @dp.message(EditProduct.new_value, F.text)
 async def edit_text_field(message: Message, state: FSMContext):
@@ -797,7 +849,16 @@ async def edit_photo(message: Message, state: FSMContext, bot: Bot):
     os.makedirs("static/uploaded", exist_ok=True)
     await bot.download_file(file.file_path, file_path)
 
-    await products_col.update_one({"id": product_id}, {"$set": {"image": f"/static/uploaded/{filename}"}})
+    # Удаляем старые фото
+    product = await get_product_by_id(product_id)
+    if product and 'images' in product:
+        for img_path in product['images']:
+            if img_path.startswith('/static/uploaded/'):
+                local_path = img_path.replace('/static/uploaded/', 'static/uploaded/')
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+
+    await products_col.update_one({"id": product_id}, {"$set": {"images": [f"/static/uploaded/{filename}"]}})
     await state.clear()
     log_admin_action(message.from_user.id, f"Изменил фото товара ID {product_id}")
     await message.answer("✅ Фото обновлено.", reply_markup=get_main_keyboard(True))
@@ -1148,7 +1209,6 @@ async def handle_restore(message: Message, bot: Bot):
         [InlineKeyboardButton(text="✅ Подтверждаю восстановление", callback_data="confirm_restore")]
     ])
     await message.answer("Восстановление удалит все текущие товары, заказы и промокоды. Вы уверены?", reply_markup=kb)
-    # Временно сохраним путь (для простоты используем глобальную переменную)
     global restore_file
     restore_file = file_path
 
@@ -1259,6 +1319,13 @@ async def wheel_add_prize_start(callback: CallbackQuery, state: FSMContext):
 @dp.message(WheelPrize.description)
 async def wheel_add_prize_desc(message: Message, state: FSMContext):
     await state.update_data(description=message.text)
+    await state.set_state(WheelPrize.icon)
+    await message.answer("Введите иконку для приза (например, эмодзи 🎁):", reply_markup=get_cancel_keyboard())
+
+@dp.message(WheelPrize.icon)
+async def wheel_add_prize_icon(message: Message, state: FSMContext):
+    icon = message.text.strip()
+    await state.update_data(icon=icon)
     await state.set_state(WheelPrize.type)
     await message.answer("Выберите тип приза: percent / fixed / bonus / shipping", reply_markup=get_cancel_keyboard())
 
@@ -1305,6 +1372,7 @@ async def wheel_add_prize_prob(message: Message, state: FSMContext):
     prize_doc = {
         "id": prize_id,
         "description": data['description'],
+        "icon": data['icon'],
         "type": data['type'],
         "value": data['value'],
         "probability": prob,
@@ -1324,7 +1392,7 @@ async def wheel_list_prizes(callback: CallbackQuery):
         return
     text = "🎁 <b>Призы колеса фортуны:</b>\n\n"
     for p in prizes:
-        text += f"ID: {p['id']} | {p['description']} | {p['type']} | значение: {p['value']} | вес: {p['probability']}\n"
+        text += f"ID: {p['id']} | {p['icon']} {p['description']} | {p['type']} | значение: {p['value']} | вес: {p['probability']}\n"
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Назад", callback_data="wheel_back")]
     ]))
@@ -1379,6 +1447,8 @@ async def get_products():
     async for doc in cursor:
         cat = doc['category']
         sub = doc.get('subcategory')
+        images = doc.get('images', [])
+        full_image_urls = [f"{BASE_URL}{img}" for img in images]
         product = {
             "id": doc['id'],
             "name": doc['name'],
@@ -1386,7 +1456,8 @@ async def get_products():
             "price": doc['price'],
             "discount": doc.get('discount', 0),
             "isNew": doc.get('is_new', False),
-            "img": f"{BASE_URL}{doc['image']}" if doc.get('image') else "/static/uploaded/default.jpg"
+            "images": full_image_urls,
+            "img": full_image_urls[0] if full_image_urls else "/static/uploaded/default.jpg"
         }
         if cat == "vape":
             if cat not in products:
@@ -1478,6 +1549,7 @@ async def get_wheel_prizes():
         result.append({
             "id": p['id'],
             "description": p['description'],
+            "icon": p.get('icon', '🎁'),
             "type": p['type'],
             "value": p['value'],
             "probability": p.get('probability', 1)
@@ -1488,6 +1560,3 @@ async def get_wheel_prizes():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
