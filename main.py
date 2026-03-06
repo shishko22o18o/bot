@@ -3192,10 +3192,11 @@ async function uploadImages(files) {
 </body>
 </html> """
 
-    return FileResponse("static/admin.html")
+    return HTMLResponse(content=html_content)
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
