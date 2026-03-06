@@ -129,7 +129,7 @@ async def init_mongodb():
     await promocodes_col.create_index("expires_at")
     await blocked_users_col.create_index("user_id", unique=True)
     await wheel_prizes_col.create_index("id", unique=True)
-    await admin_logs_col.create_index("timestamp", -1)
+    await admin_logs_col.create_index([("timestamp", -1)])
     await settings_col.create_index("key", unique=True)
     logger.info("MongoDB инициализирована.")
 
@@ -3198,3 +3198,4 @@ async function uploadImages(files) {
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
