@@ -627,31 +627,58 @@ async function uploadImages(files) {
             document.getElementById('product-form-modal').style.display = 'none';
         }
 
-        async function saveProduct() {
-            const form = document.getElementById('product-form');
-            const formData = new FormData(form);
-            // Если редактирование, добавляем метод PUT
-            const id = document.getElementById('product-id').value;
-            const url = id ? `/admin/products/${id}` : '/admin/products';
-            const method = id ? 'PUT' : 'POST';
-            // Для обычного JSON-API мы бы отправляли JSON, но для файлов нужен FormData.
-            // Предположим, бекенд поддерживает multipart/form-data. Если нет – придётся передавать как раньше.
-            // Пока оставим как есть, но в реальности нужно доработать бекенд.
-            // Здесь я использую fetch с FormData.
-            const res = await fetch(url, {
-                method: method,
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            if (res.ok) {
-                closeProductForm();
-                loadProducts();
-            } else {
-                const err = await res.text();
-                document.getElementById('product-form-error').textContent = 'Ошибка: ' + err;
-            }
-        }
+      async function saveProduct() {
+    const id = document.getElementById('product-id').value;
+    const name = document.getElementById('product-name').value;
+    const description = document.getElementById('product-description').value;
+    const price = parseInt(document.getElementById('product-price').value);
+    const category = document.getElementById('product-category').value;
+    const subcategory = document.getElementById('product-subcategory').value;
+    const discount = parseInt(document.getElementById('product-discount').value) || 0;
+    const is_new = parseInt(document.getElementById('product-isnew').value) === 1;
+    const imageFiles = document.getElementById('product-images').files;
 
+    let imageUrls = [];
+    if (imageFiles.length > 0) {
+        try {
+            imageUrls = await uploadImages(imageFiles);
+        } catch (e) {
+            document.getElementById('product-form-error').textContent = 'Ошибка загрузки изображений';
+            return;
+        }
+    }
+
+    const productData = {
+        name,
+        description,
+        price,
+        category,
+        subcategory,
+        discount,
+        is_new,
+        images: imageUrls
+    };
+
+    const url = id ? `/admin/products/${id}` : '/admin/products';
+    const method = id ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(productData)
+    });
+
+    if (res.ok) {
+        closeProductForm();
+        loadProducts();
+    } else {
+        const err = await res.text();
+        document.getElementById('product-form-error').textContent = 'Ошибка: ' + err;
+    }
+}
         async function deleteProduct(id) {
             if (!confirm('Удалить товар?')) return;
             const res = await fetch(`/admin/products/${id}`, {
