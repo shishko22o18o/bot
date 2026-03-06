@@ -111,7 +111,6 @@ admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
 
 async def init_mongodb():
-    """Создание индексов для коллекций."""
     try:
         await client.admin.command('ping')
         logger.info("✅ MongoDB ping successful")
@@ -129,10 +128,19 @@ async def init_mongodb():
     await promocodes_col.create_index("expires_at")
     await blocked_users_col.create_index("user_id", unique=True)
     await wheel_prizes_col.create_index("id", unique=True)
-    await admin_logs_col.create_index([("timestamp", -1)])
-    await settings_col.create_index("key", unique=True)
-    logger.info("MongoDB инициализирована.")
 
+    # Индексы для новых коллекций с обработкой ошибок
+    try:
+        await admin_logs_col.create_index([("timestamp", -1)])
+    except Exception as e:
+        logger.error(f"Не удалось создать индекс для admin_logs_col: {e}")
+
+    try:
+        await settings_col.create_index("key", unique=True)
+    except Exception as e:
+        logger.error(f"Не удалось создать индекс для settings_col: {e}")
+
+    logger.info("MongoDB инициализирована.")
 # ==================== JWT АУТЕНТИФИКАЦИЯ ====================
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login")
@@ -3198,5 +3206,6 @@ async function uploadImages(files) {
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
