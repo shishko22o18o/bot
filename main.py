@@ -1945,21 +1945,33 @@ async def admin_popular(limit: int = 10, admin=Depends(get_current_admin)):
 
 @app.post("/admin/backup")
 async def admin_backup(admin=Depends(get_current_admin)):
-    products = await products_col.find().to_list(length=10000)
-    orders = await orders_col.find().to_list(length=10000)
-    promos = await promocodes_col.find().to_list(length=1000)
+    try:
+        products = await products_col.find().to_list(length=10000)
+        orders = await orders_col.find().to_list(length=10000)
+        promos = await promocodes_col.find().to_list(length=1000)
 
-    def convert_dates(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return obj
+        def convert_dates(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            return obj
 
-    backup = {
-        "products": [{k: convert_dates(v) for k, v in p.items()} for p in products],
-        "orders": [{k: convert_dates(v) for k, v in o.items()} for o in orders],
-        "promocodes": [{k: convert_dates(v) for k, v in p.items()} for p in promos]
-    }
-    return JSONResponse(content=backup)
+        # Преобразуем _id в строку для всех элементов
+        for p in products:
+            p['_id'] = str(p['_id'])
+        for o in orders:
+            o['_id'] = str(o['_id'])
+        for pr in promos:
+            pr['_id'] = str(pr['_id'])
+
+        backup = {
+            "products": [{k: convert_dates(v) for k, v in p.items()} for p in products],
+            "orders": [{k: convert_dates(v) for k, v in o.items()} for o in orders],
+            "promocodes": [{k: convert_dates(v) for k, v in p.items()} for p in promos]
+        }
+        return JSONResponse(content=backup)
+    except Exception as e:
+        logger.error(f"Ошибка при создании бэкапа: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/restore")
 async def admin_restore(file: UploadFile = File(...), admin=Depends(get_current_admin)):
@@ -2084,6 +2096,7 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
