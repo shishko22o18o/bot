@@ -288,7 +288,7 @@ def _convert_image(input_path, output_path, quality):
             img = background
         elif img.mode != 'RGB':
             img = img.convert('RGB')
-        img.save(output_path, 'JPEG', quality=quality)
+        img.save(output_path, 'JPG', quality=quality)
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 storage = MemoryStorage()
@@ -2105,6 +2105,7 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
