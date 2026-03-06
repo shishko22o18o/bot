@@ -263,32 +263,7 @@ def generate_help_text() -> str:
 ❌ Отмена – отмена текущего действия в любом FSM
 """
 
-# ==================== ФУНКЦИЯ КОНВЕРТАЦИИ ИЗОБРАЖЕНИЙ ====================
-async def convert_to_jpg(input_path: str, output_path: str, quality: int = 90):
-    """
-    Конвертирует изображение в JPG и сохраняет по output_path.
-    Запускается в отдельном потоке, чтобы не блокировать asyncio.
-    """
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _convert_image, input_path, output_path, quality)
 
-def _convert_image(input_path, output_path, quality):
-    with Image.open(input_path) as img:
-        # Если есть альфа-канал, конвертируем в RGB (накладываем на белый фон)
-        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-            # Создаём белый фон
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'P':
-                img = img.convert('RGBA')
-            # Если есть прозрачность, используем её как маску
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[-1])
-            else:
-                background.paste(img)
-            img = background
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
-        img.save(output_path, 'JPG', quality=quality)
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 storage = MemoryStorage()
@@ -2105,6 +2080,7 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
