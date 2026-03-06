@@ -2076,15 +2076,18 @@ async def admin_upload_image(file: UploadFile = File(...), admin=Depends(get_cur
     return {"url": image_url}
 
 # ==================== СТАТИЧЕСКАЯ АДМИНКА ====================
-@app.get("/admin", response_class=HTMLResponse)
-async def get_admin_page():
-    
-     return FileResponse("static/index.html")
+from fastapi.responses import FileResponse
+
+@app.get("/")
+async def get_store():
+    # Укажите путь к вашему HTML-файлу магазина
+    return FileResponse("static/index.html")
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
