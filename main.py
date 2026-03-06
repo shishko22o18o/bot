@@ -1911,62 +1911,395 @@ async def admin_restore(file: UploadFile = File(...), admin=Depends(get_current_
 # ==================== СТАТИЧЕСКАЯ АДМИНКА ====================
 @app.get("/admin", response_class=HTMLResponse)
 async def get_admin_page():
-    # Возвращаем простую админку (можно заменить на отдельный файл)
     html_content = """
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin Panel</title>
+    <title>Bau28 Admin</title>
     <style>
-        body { background: #111; color: #eee; font-family: Arial; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; }
-        .hidden { display: none; }
-        #login { max-width: 300px; margin: 100px auto; }
-        input, button { width: 100%; padding: 10px; margin: 5px 0; }
-        button { background: #b829ff; color: white; border: none; cursor: pointer; }
-        .error { color: red; }
-        .section { background: #222; padding: 20px; margin: 20px 0; border-radius: 8px; }
-        pre { background: #333; padding: 10px; overflow-x: auto; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        body {
+            background-color: #0d0914;
+            color: #f0f0f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #b829ff;
+            text-shadow: 0 0 10px #b829ff;
+        }
+        .login-form {
+            max-width: 400px;
+            margin: 100px auto;
+            background: rgba(20, 15, 28, 0.9);
+            padding: 30px;
+            border-radius: 20px;
+            border: 1px solid #b829ff;
+            box-shadow: 0 0 20px #b829ff;
+        }
+        .login-form h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+        input, select, textarea, button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #333;
+            border-radius: 10px;
+            background: #1a1122;
+            color: white;
+            font-size: 1rem;
+        }
+        button {
+            background: linear-gradient(135deg, #8a2be2, #b829ff);
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.02);
+        }
+        .error {
+            color: #ff6b6b;
+            text-align: center;
+        }
+        .hidden {
+            display: none;
+        }
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .tab-btn {
+            flex: 1;
+            min-width: 100px;
+            background: #1a1122;
+            border: 1px solid #b829ff;
+            color: #b829ff;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 10px;
+            transition: 0.2s;
+        }
+        .tab-btn.active {
+            background: #b829ff;
+            color: white;
+            box-shadow: 0 0 10px #b829ff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .card {
+            background: rgba(20, 15, 28, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #b829ff;
+        }
+        .card h3 {
+            margin-bottom: 15px;
+            color: #b829ff;
+        }
+        .flex-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .item-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .item {
+            background: #1a1122;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 1px solid #333;
+        }
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .item-actions button {
+            width: auto;
+            padding: 5px 10px;
+            margin: 0 2px;
+            background: #333;
+        }
+        .item-actions button.edit { background: #4caf50; }
+        .item-actions button.delete { background: #ff4444; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 600px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th {
+            background: #1a1122;
+        }
+        .badge {
+            background: #b829ff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+        }
+        .status-select {
+            width: auto;
+            display: inline-block;
+            padding: 5px;
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="login">
-            <h2>Admin Login</h2>
-            <input type="password" id="password" placeholder="Password">
-            <button onclick="login()">Login</button>
-            <div class="error" id="login-error"></div>
+        <div id="login-section" class="login-form">
+            <h2>Вход в админ-панель</h2>
+            <input type="password" id="password" placeholder="Пароль">
+            <button onclick="login()">Войти</button>
+            <div id="login-error" class="error"></div>
         </div>
-        <div id="admin-panel" class="hidden">
+
+        <div id="admin-section" class="hidden">
             <h1>Bau28 Admin Panel</h1>
-            <div class="section">
-                <h2>Товары</h2>
-                <button onclick="loadProducts()">Загрузить товары</button>
-                <button onclick="addProductForm()">Добавить товар</button>
-                <div id="products-list"></div>
+            <div class="tabs" id="tabs">
+                <button class="tab-btn active" data-tab="products">Товары</button>
+                <button class="tab-btn" data-tab="orders">Заказы</button>
+                <button class="tab-btn" data-tab="promos">Промокоды</button>
+                <button class="tab-btn" data-tab="wheel">Призы колеса</button>
+                <button class="tab-btn" data-tab="users">Пользователи</button>
+                <button class="tab-btn" data-tab="stats">Статистика</button>
+                <button class="tab-btn" data-tab="backup">Резервное копирование</button>
             </div>
-            <div class="section">
-                <h2>Заказы</h2>
-                <button onclick="loadOrders()">Загрузить заказы</button>
-                <div id="orders-list"></div>
+
+            <!-- ========== ТОВАРЫ ========== -->
+            <div id="tab-products" class="tab-content active">
+                <div class="card">
+                    <h3>Управление товарами</h3>
+                    <button onclick="showAddProductForm()">➕ Добавить товар</button>
+                    <div id="product-list" class="item-list"></div>
+                </div>
             </div>
-            <div class="section">
-                <h2>Статистика</h2>
-                <button onclick="loadStats()">Общая статистика</button>
-                <button onclick="loadPopular()">Популярные товары</button>
-                <div id="stats"></div>
+
+            <!-- ========== ЗАКАЗЫ ========== -->
+            <div id="tab-orders" class="tab-content">
+                <div class="card">
+                    <h3>Заказы</h3>
+                    <div class="flex-row">
+                        <label>Фильтр по статусу:</label>
+                        <select id="order-status-filter">
+                            <option value="">Все</option>
+                            <option value="new">Новые</option>
+                            <option value="shipped">Отправленные</option>
+                            <option value="done">Выполненные</option>
+                            <option value="cancelled">Отменённые</option>
+                        </select>
+                        <button onclick="loadOrders()">Применить</button>
+                    </div>
+                    <div id="orders-list" class="item-list"></div>
+                </div>
+            </div>
+
+            <!-- ========== ПРОМОКОДЫ ========== -->
+            <div id="tab-promos" class="tab-content">
+                <div class="card">
+                    <h3>Промокоды</h3>
+                    <button onclick="showAddPromoForm()">➕ Добавить промокод</button>
+                    <div id="promo-list" class="item-list"></div>
+                </div>
+            </div>
+
+            <!-- ========== ПРИЗЫ КОЛЕСА ========== -->
+            <div id="tab-wheel" class="tab-content">
+                <div class="card">
+                    <h3>Призы колеса фортуны</h3>
+                    <button onclick="showAddWheelPrizeForm()">➕ Добавить приз</button>
+                    <div id="wheel-list" class="item-list"></div>
+                </div>
+            </div>
+
+            <!-- ========== ПОЛЬЗОВАТЕЛИ (БЛОКИРОВКА) ========== -->
+            <div id="tab-users" class="tab-content">
+                <div class="card">
+                    <h3>Блокировка пользователей</h3>
+                    <div class="flex-row">
+                        <input type="text" id="block-user-id" placeholder="Telegram ID пользователя">
+                        <button onclick="blockUser()">Заблокировать</button>
+                    </div>
+                    <div id="blocked-list" class="item-list"></div>
+                </div>
+            </div>
+
+            <!-- ========== СТАТИСТИКА ========== -->
+            <div id="tab-stats" class="tab-content">
+                <div class="grid-2">
+                    <div class="card">
+                        <h3>Общая статистика</h3>
+                        <div id="general-stats"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Популярные товары</h3>
+                        <div id="popular-products"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== РЕЗЕРВНОЕ КОПИРОВАНИЕ ========== -->
+            <div id="tab-backup" class="tab-content">
+                <div class="card">
+                    <h3>Резервное копирование</h3>
+                    <button onclick="createBackup()">📥 Скачать backup.json</button>
+                    <div style="margin-top: 20px;">
+                        <h4>Восстановление</h4>
+                        <input type="file" id="restore-file" accept=".json">
+                        <button onclick="restoreBackup()">📤 Восстановить</button>
+                    </div>
+                    <div id="backup-message"></div>
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- Форма добавления/редактирования товара (скрытая) -->
+    <div id="product-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
+        <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:500px; width:90%; max-height:90%; overflow-y:auto;">
+            <h2 id="product-form-title">Добавление товара</h2>
+            <input type="text" id="product-id" placeholder="ID (только для редактирования)" readonly style="display:none;">
+            <input type="text" id="product-name" placeholder="Название *">
+            <textarea id="product-description" placeholder="Описание" rows="3"></textarea>
+            <input type="number" id="product-price" placeholder="Цена *">
+            <select id="product-category">
+                <option value="clothes">Одежда</option>
+                <option value="accessories">Аксессуары</option>
+                <option value="vape">VAPE</option>
+                <option value="electronics">Электроника</option>
+            </select>
+            <input type="text" id="product-subcategory" placeholder="Подкатегория (для vape: liquids, consumables, disposable, pods)">
+            <input type="number" id="product-discount" placeholder="Скидка % (0-100)">
+            <select id="product-isnew">
+                <option value="0">Не новинка</option>
+                <option value="1">Новинка</option>
+            </select>
+            <div>
+                <label>Изображения (URL через запятую):</label>
+                <input type="text" id="product-images" placeholder="https://...">
+            </div>
+            <div class="flex-row" style="margin-top:20px;">
+                <button onclick="saveProduct()">Сохранить</button>
+                <button onclick="closeProductForm()">Отмена</button>
+            </div>
+            <div id="product-form-error" style="color:red;"></div>
+        </div>
+    </div>
+
+    <!-- Форма добавления промокода -->
+    <div id="promo-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
+        <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:500px; width:90%;">
+            <h2>Добавление промокода</h2>
+            <input type="text" id="promo-code" placeholder="Код *">
+            <select id="promo-type">
+                <option value="discount">Скидка</option>
+                <option value="wheel">Колесо фортуны</option>
+            </select>
+            <div id="discount-fields">
+                <select id="promo-discount-type">
+                    <option value="percent">Процент</option>
+                    <option value="fixed">Фиксированная сумма</option>
+                </select>
+                <input type="number" id="promo-value" placeholder="Значение (для процентов 1-100)">
+            </div>
+            <input type="text" id="promo-expires" placeholder="Дата окончания (ГГГГ-ММ-ДД) или 'never'">
+            <input type="text" id="promo-max-uses" placeholder="Макс. использований (или 'unlimited')">
+            <div class="flex-row" style="margin-top:20px;">
+                <button onclick="savePromo()">Сохранить</button>
+                <button onclick="closePromoForm()">Отмена</button>
+            </div>
+            <div id="promo-form-error" style="color:red;"></div>
+        </div>
+    </div>
+
+    <!-- Форма добавления приза колеса -->
+    <div id="wheel-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
+        <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:500px; width:90%;">
+            <h2>Добавление приза</h2>
+            <input type="text" id="wheel-description" placeholder="Описание *">
+            <input type="text" id="wheel-icon" placeholder="Иконка (эмодзи)">
+            <select id="wheel-type">
+                <option value="percent">Процентная скидка</option>
+                <option value="fixed">Фиксированная скидка (₽)</option>
+                <option value="bonus">Бонусные баллы</option>
+                <option value="shipping">Бесплатная доставка</option>
+            </select>
+            <input type="number" id="wheel-value" placeholder="Значение">
+            <input type="number" id="wheel-probability" placeholder="Вероятность (вес)" value="1">
+            <div class="flex-row" style="margin-top:20px;">
+                <button onclick="saveWheelPrize()">Сохранить</button>
+                <button onclick="closeWheelForm()">Отмена</button>
+            </div>
+            <div id="wheel-form-error" style="color:red;"></div>
+        </div>
+    </div>
+
     <script>
         let token = localStorage.getItem('token');
+        const apiBase = ''; // относительные пути
 
-        function showError(msg, element) {
-            document.getElementById(element).textContent = msg;
-        }
+        // Проверка токена при загрузке
+        (async function() {
+            if (token) {
+                const res = await fetch('/admin/products', { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    document.getElementById('login-section').classList.add('hidden');
+                    document.getElementById('admin-section').classList.remove('hidden');
+                    loadProducts();
+                    loadOrders();
+                    loadPromos();
+                    loadWheelPrizes();
+                    loadBlockedUsers();
+                    loadStats();
+                } else {
+                    localStorage.removeItem('token');
+                }
+            }
+        })();
 
+        // Вход
         async function login() {
             const password = document.getElementById('password').value;
             const res = await fetch('/admin/login', {
@@ -1978,59 +2311,483 @@ async def get_admin_page():
                 const data = await res.json();
                 token = data.access_token;
                 localStorage.setItem('token', token);
-                document.getElementById('login').classList.add('hidden');
-                document.getElementById('admin-panel').classList.remove('hidden');
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('admin-section').classList.remove('hidden');
+                loadProducts();
+                loadOrders();
+                loadPromos();
+                loadWheelPrizes();
+                loadBlockedUsers();
+                loadStats();
             } else {
-                showError('Неверный пароль', 'login-error');
+                document.getElementById('login-error').textContent = 'Неверный пароль';
             }
         }
 
-        (async function() {
-            if (token) {
-                const res = await fetch('/admin/products', { headers: { 'Authorization': `Bearer ${token}` } });
-                if (res.ok) {
-                    document.getElementById('login').classList.add('hidden');
-                    document.getElementById('admin-panel').classList.remove('hidden');
-                } else {
-                    localStorage.removeItem('token');
-                }
-            }
-        })();
+        // Переключение вкладок
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(`tab-${tab}`).classList.add('active');
+            });
+        });
 
+        // ========== ТОВАРЫ ==========
         async function loadProducts() {
             const res = await fetch('/admin/products', { headers: { 'Authorization': `Bearer ${token}` } });
             const products = await res.json();
-            document.getElementById('products-list').innerHTML = '<pre>' + JSON.stringify(products, null, 2) + '</pre>';
+            const container = document.getElementById('product-list');
+            if (!products.length) {
+                container.innerHTML = '<div class="item">Товаров нет</div>';
+                return;
+            }
+            let html = '';
+            products.forEach(p => {
+                html += `
+                    <div class="item">
+                        <div class="item-header">
+                            <strong>${p.name}</strong> (ID: ${p.id})
+                            <div class="item-actions">
+                                <button class="edit" onclick="editProduct('${p.id}')">✏️</button>
+                                <button class="delete" onclick="deleteProduct('${p.id}')">🗑️</button>
+                            </div>
+                        </div>
+                        <div>Цена: ${p.price} ₽, скидка: ${p.discount}%</div>
+                        <div>Категория: ${p.category} / ${p.subcategory || '-'}</div>
+                        <div>Описание: ${p.description || '-'}</div>
+                        <div>Фото: ${p.images?.length || 0} шт.</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
         }
 
+        function showAddProductForm() {
+            document.getElementById('product-form-title').textContent = 'Добавление товара';
+            document.getElementById('product-id').value = '';
+            document.getElementById('product-name').value = '';
+            document.getElementById('product-description').value = '';
+            document.getElementById('product-price').value = '';
+            document.getElementById('product-category').value = 'clothes';
+            document.getElementById('product-subcategory').value = '';
+            document.getElementById('product-discount').value = '0';
+            document.getElementById('product-isnew').value = '0';
+            document.getElementById('product-images').value = '';
+            document.getElementById('product-form-modal').style.display = 'flex';
+        }
+
+        function editProduct(id) {
+            fetch(`/admin/products`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(res => res.json())
+                .then(products => {
+                    const product = products.find(p => p.id === id);
+                    if (!product) return;
+                    document.getElementById('product-form-title').textContent = 'Редактирование товара';
+                    document.getElementById('product-id').value = product.id;
+                    document.getElementById('product-name').value = product.name;
+                    document.getElementById('product-description').value = product.description || '';
+                    document.getElementById('product-price').value = product.price;
+                    document.getElementById('product-category').value = product.category;
+                    document.getElementById('product-subcategory').value = product.subcategory || '';
+                    document.getElementById('product-discount').value = product.discount || 0;
+                    document.getElementById('product-isnew').value = product.is_new ? '1' : '0';
+                    document.getElementById('product-images').value = (product.images || []).join(', ');
+                    document.getElementById('product-form-modal').style.display = 'flex';
+                });
+        }
+
+        function closeProductForm() {
+            document.getElementById('product-form-modal').style.display = 'none';
+        }
+
+        async function saveProduct() {
+            const id = document.getElementById('product-id').value;
+            const productData = {
+                name: document.getElementById('product-name').value,
+                description: document.getElementById('product-description').value,
+                price: parseInt(document.getElementById('product-price').value),
+                category: document.getElementById('product-category').value,
+                subcategory: document.getElementById('product-subcategory').value,
+                discount: parseInt(document.getElementById('product-discount').value) || 0,
+                is_new: parseInt(document.getElementById('product-isnew').value) === 1,
+                images: document.getElementById('product-images').value.split(',').map(s => s.trim()).filter(s => s)
+            };
+            if (!productData.name || !productData.price) {
+                document.getElementById('product-form-error').textContent = 'Заполните обязательные поля';
+                return;
+            }
+            let url = '/admin/products';
+            let method = 'POST';
+            if (id) {
+                url = `/admin/products/${id}`;
+                method = 'PUT';
+            }
+            const res = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(productData)
+            });
+            if (res.ok) {
+                closeProductForm();
+                loadProducts();
+            } else {
+                const err = await res.text();
+                document.getElementById('product-form-error').textContent = 'Ошибка: ' + err;
+            }
+        }
+
+        async function deleteProduct(id) {
+            if (!confirm('Удалить товар?')) return;
+            const res = await fetch(`/admin/products/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                loadProducts();
+            } else {
+                alert('Ошибка удаления');
+            }
+        }
+
+        // ========== ЗАКАЗЫ ==========
         async function loadOrders() {
-            const res = await fetch('/admin/orders', { headers: { 'Authorization': `Bearer ${token}` } });
+            const status = document.getElementById('order-status-filter').value;
+            const url = status ? `/admin/orders?status=${status}` : '/admin/orders';
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const orders = await res.json();
-            document.getElementById('orders-list').innerHTML = '<pre>' + JSON.stringify(orders, null, 2) + '</pre>';
+            const container = document.getElementById('orders-list');
+            if (!orders.length) {
+                container.innerHTML = '<div class="item">Заказов нет</div>';
+                return;
+            }
+            let html = '';
+            orders.forEach(o => {
+                html += `
+                    <div class="item">
+                        <div class="item-header">
+                            <strong>Заказ #${o.id}</strong> от ${o.user_name} (ID: ${o.user_id})
+                            <span class="badge">${o.status}</span>
+                        </div>
+                        <div>Сумма: ${o.total} ₽, промо: ${o.promo_used || '-'}</div>
+                        <div>Дата: ${new Date(o.created_at).toLocaleString()}</div>
+                        <div>Товары: ${o.items.map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                        <div class="flex-row">
+                            <select class="status-select" data-order-id="${o.id}">
+                                <option value="new" ${o.status === 'new' ? 'selected' : ''}>Новый</option>
+                                <option value="shipped" ${o.status === 'shipped' ? 'selected' : ''}>Отправлен</option>
+                                <option value="done" ${o.status === 'done' ? 'selected' : ''}>Выполнен</option>
+                                <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>Отменён</option>
+                            </select>
+                            <button onclick="updateOrderStatus('${o.id}')">Сохранить статус</button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
         }
 
+        async function updateOrderStatus(orderId) {
+            const select = document.querySelector(`select[data-order-id="${orderId}"]`);
+            const newStatus = select.value;
+            const res = await fetch(`/admin/orders/${orderId}?status=${newStatus}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                loadOrders();
+            } else {
+                alert('Ошибка обновления статуса');
+            }
+        }
+
+        // ========== ПРОМОКОДЫ ==========
+        async function loadPromos() {
+            const res = await fetch('/admin/promocodes', { headers: { 'Authorization': `Bearer ${token}` } });
+            const promos = await res.json();
+            const container = document.getElementById('promo-list');
+            if (!promos.length) {
+                container.innerHTML = '<div class="item">Промокодов нет</div>';
+                return;
+            }
+            let html = '';
+            promos.forEach(p => {
+                html += `
+                    <div class="item">
+                        <div class="item-header">
+                            <strong>${p.code}</strong> (тип: ${p.type})
+                            <button class="delete" onclick="deletePromo('${p.code}')">🗑️</button>
+                        </div>
+                        <div>Скидка: ${p.discount_type === 'percent' ? p.value + '%' : (p.value ? p.value + '₽' : '—')}</div>
+                        <div>Срок: ${p.expires_at ? new Date(p.expires_at).toLocaleDateString() : 'бессрочно'}</div>
+                        <div>Использований: ${p.used_count}/${p.max_uses}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function showAddPromoForm() {
+            document.getElementById('promo-form-modal').style.display = 'flex';
+            document.getElementById('promo-code').value = '';
+            document.getElementById('promo-type').value = 'discount';
+            document.getElementById('promo-discount-type').value = 'percent';
+            document.getElementById('promo-value').value = '';
+            document.getElementById('promo-expires').value = '';
+            document.getElementById('promo-max-uses').value = '';
+        }
+
+        function closePromoForm() {
+            document.getElementById('promo-form-modal').style.display = 'none';
+        }
+
+        async function savePromo() {
+            const promoData = {
+                code: document.getElementById('promo-code').value.toUpperCase(),
+                type: document.getElementById('promo-type').value,
+                expires_at: document.getElementById('promo-expires').value === 'never' ? '9999-12-31' : document.getElementById('promo-expires').value,
+                max_uses: document.getElementById('promo-max-uses').value === 'unlimited' ? 999999 : parseInt(document.getElementById('promo-max-uses').value),
+            };
+            if (promoData.type === 'discount') {
+                promoData.discount_type = document.getElementById('promo-discount-type').value;
+                promoData.value = parseInt(document.getElementById('promo-value').value);
+            }
+            if (!promoData.code) {
+                document.getElementById('promo-form-error').textContent = 'Введите код';
+                return;
+            }
+            const res = await fetch('/admin/promocodes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(promoData)
+            });
+            if (res.ok) {
+                closePromoForm();
+                loadPromos();
+            } else {
+                const err = await res.text();
+                document.getElementById('promo-form-error').textContent = 'Ошибка: ' + err;
+            }
+        }
+
+        async function deletePromo(code) {
+            if (!confirm('Удалить промокод?')) return;
+            const res = await fetch(`/admin/promocodes/${code}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                loadPromos();
+            } else {
+                alert('Ошибка удаления');
+            }
+        }
+
+        // ========== ПРИЗЫ КОЛЕСА ==========
+        async function loadWheelPrizes() {
+            const res = await fetch('/admin/wheel-prizes', { headers: { 'Authorization': `Bearer ${token}` } });
+            const prizes = await res.json();
+            const container = document.getElementById('wheel-list');
+            if (!prizes.length) {
+                container.innerHTML = '<div class="item">Призов нет</div>';
+                return;
+            }
+            let html = '';
+            prizes.forEach(p => {
+                html += `
+                    <div class="item">
+                        <div class="item-header">
+                            <strong>${p.icon} ${p.description}</strong> (ID: ${p.id})
+                            <button class="delete" onclick="deleteWheelPrize('${p.id}')">🗑️</button>
+                        </div>
+                        <div>Тип: ${p.type}, значение: ${p.value}, вес: ${p.probability}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function showAddWheelPrizeForm() {
+            document.getElementById('wheel-form-modal').style.display = 'flex';
+            document.getElementById('wheel-description').value = '';
+            document.getElementById('wheel-icon').value = '';
+            document.getElementById('wheel-type').value = 'percent';
+            document.getElementById('wheel-value').value = '';
+            document.getElementById('wheel-probability').value = '1';
+        }
+
+        function closeWheelForm() {
+            document.getElementById('wheel-form-modal').style.display = 'none';
+        }
+
+        async function saveWheelPrize() {
+            const prizeData = {
+                description: document.getElementById('wheel-description').value,
+                icon: document.getElementById('wheel-icon').value || '🎁',
+                type: document.getElementById('wheel-type').value,
+                value: parseInt(document.getElementById('wheel-value').value),
+                probability: parseInt(document.getElementById('wheel-probability').value) || 1
+            };
+            if (!prizeData.description || !prizeData.value) {
+                document.getElementById('wheel-form-error').textContent = 'Заполните обязательные поля';
+                return;
+            }
+            const res = await fetch('/admin/wheel-prizes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(prizeData)
+            });
+            if (res.ok) {
+                closeWheelForm();
+                loadWheelPrizes();
+            } else {
+                const err = await res.text();
+                document.getElementById('wheel-form-error').textContent = 'Ошибка: ' + err;
+            }
+        }
+
+        async function deleteWheelPrize(id) {
+            if (!confirm('Удалить приз?')) return;
+            const res = await fetch(`/admin/wheel-prizes/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                loadWheelPrizes();
+            } else {
+                alert('Ошибка удаления');
+            }
+        }
+
+        // ========== БЛОКИРОВКА ПОЛЬЗОВАТЕЛЕЙ ==========
+        async function loadBlockedUsers() {
+            const res = await fetch('/admin/blocked-users', { headers: { 'Authorization': `Bearer ${token}` } });
+            const users = await res.json();
+            const container = document.getElementById('blocked-list');
+            if (!users.length) {
+                container.innerHTML = '<div class="item">Нет заблокированных пользователей</div>';
+                return;
+            }
+            let html = '';
+            users.forEach(u => {
+                html += `
+                    <div class="item">
+                        <div class="item-header">
+                            <span>ID: ${u.user_id} (с ${new Date(u.blocked_at).toLocaleDateString()})</span>
+                            <button class="delete" onclick="unblockUser('${u.user_id}')">Разблокировать</button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        async function blockUser() {
+            const userId = document.getElementById('block-user-id').value;
+            if (!userId) return;
+            const res = await fetch('/admin/blocked-users?user_id=' + userId, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                document.getElementById('block-user-id').value = '';
+                loadBlockedUsers();
+            } else {
+                alert('Ошибка блокировки');
+            }
+        }
+
+        async function unblockUser(userId) {
+            if (!confirm('Разблокировать пользователя?')) return;
+            const res = await fetch(`/admin/blocked-users/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                loadBlockedUsers();
+            } else {
+                alert('Ошибка разблокировки');
+            }
+        }
+
+        // ========== СТАТИСТИКА ==========
         async function loadStats() {
             const res = await fetch('/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } });
             const stats = await res.json();
-            document.getElementById('stats').innerHTML = '<pre>' + JSON.stringify(stats, null, 2) + '</pre>';
+            document.getElementById('general-stats').innerHTML = `
+                <p>📦 Товаров: ${stats.total_products}</p>
+                <p>🛒 Заказов: ${stats.total_orders}</p>
+                <p>💰 Сумма продаж: ${stats.total_sales} ₽</p>
+                <p>🆕 Новых заказов: ${stats.new_orders}</p>
+            `;
+            const popRes = await fetch('/admin/popular', { headers: { 'Authorization': `Bearer ${token}` } });
+            const pop = await popRes.json();
+            let popHtml = '';
+            if (pop.length) {
+                pop.forEach(item => {
+                    popHtml += `<p>${item._id}: ${item.total_quantity} шт., выручка ${item.total_revenue} ₽</p>`;
+                });
+            } else {
+                popHtml = '<p>Нет данных</p>';
+            }
+            document.getElementById('popular-products').innerHTML = popHtml;
         }
 
-        async function loadPopular() {
-            const res = await fetch('/admin/popular', { headers: { 'Authorization': `Bearer ${token}` } });
-            const popular = await res.json();
-            document.getElementById('stats').innerHTML = '<pre>' + JSON.stringify(popular, null, 2) + '</pre>';
+        // ========== РЕЗЕРВНОЕ КОПИРОВАНИЕ ==========
+        async function createBackup() {
+            const res = await fetch('/admin/backup', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
         }
 
-        function addProductForm() {
-            alert('Форма добавления товара ещё не реализована. Используйте бота.');
+        async function restoreBackup() {
+            const fileInput = document.getElementById('restore-file');
+            if (!fileInput.files.length) {
+                alert('Выберите файл');
+                return;
+            }
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch('/admin/restore', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            if (res.ok) {
+                document.getElementById('backup-message').textContent = 'Восстановление успешно!';
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                const err = await res.text();
+                document.getElementById('backup-message').textContent = 'Ошибка: ' + err;
+            }
         }
     </script>
 </body>
 </html>
     """
-    return html_content
+    return HTMLResponse(content=html_content)
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
