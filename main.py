@@ -92,6 +92,13 @@ admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 admin_logger.addHandler(admin_handler)
 admin_logger.setLevel(logging.INFO)
 
+app = FastAPI(lifespan=lifespan)
+
+# Монтируем статические файлы (папка static должна существовать)
+os.makedirs("static/uploaded", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
 # ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
 client = motor.motor_asyncio.AsyncIOMotorClient(
     MONGO_URL,
@@ -2096,6 +2103,7 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
