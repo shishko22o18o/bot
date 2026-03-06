@@ -92,11 +92,7 @@ admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 admin_logger.addHandler(admin_handler)
 admin_logger.setLevel(logging.INFO)
 
-app = FastAPI(lifespan=lifespan)
 
-# Монтируем статические файлы (папка static должна существовать)
-os.makedirs("static/uploaded", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
@@ -1617,6 +1613,7 @@ async def show_stats(message: Message):
     await message.answer(text)
 
 # ==================== FASTAPI ====================
+# ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(dp.start_polling(bot))
@@ -1634,6 +1631,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Монтируем статические файлы (папка static должна существовать)
+from fastapi.staticfiles import StaticFiles
+os.makedirs("static/uploaded", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ==================== ПУБЛИЧНЫЕ API (для магазина) ====================
 @app.get("/api/products")
@@ -2103,6 +2105,7 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
