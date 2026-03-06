@@ -184,12 +184,12 @@ def get_main_keyboard(is_admin: bool = False):
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="📤 Экспорт CSV")],
             [KeyboardButton(text="ℹ️ Команды")],
-            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url=f"{BASE_URL}"))],  # магазин
+            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/"),  # магазин
             [KeyboardButton(text="📊 Админ панель", web_app=types.WebAppInfo(url=f"{BASE_URL}/admin"))]   # админка
         ]
     else:
         kb = [
-            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url=f"{BASE_URL}"))]
+            [KeyboardButton(text="🛍 Открыть магазин", web_app=types.WebAppInfo(url="https://shishko22o18o.github.io/bau28store/")
         ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -2790,5 +2790,6 @@ async def get_admin_page():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
