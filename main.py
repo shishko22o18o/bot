@@ -11,7 +11,7 @@ from io import StringIO
 import io
 import shutil
 
-# Импорты aiogram
+# aiogram
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -24,11 +24,11 @@ from aiogram.types import (
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
-# Импорты FastAPI
+# FastAPI
 from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -41,11 +41,11 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
-# Дополнительные библиотеки
+# Доп. библиотеки
 import aiofiles
 from PIL import Image
 
-# Для графика (опционально)
+# matplotlib (опционально)
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -73,19 +73,17 @@ BASE_URL = os.getenv("WEBHOOK_URL")
 if not BASE_URL:
     raise ValueError("❌ WEBHOOK_URL не задан! Нужен для формирования ссылок на картинки и админку.")
 
-# Настройки JWT
 SECRET_KEY = os.getenv("JWT_SECRET")
 if not SECRET_KEY:
     raise ValueError("❌ JWT_SECRET не задан!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 день
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # используется только для инициализации, потом хеш в БД
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # не используется, оставлен для совместимости
 
-# Настройка логирования
+# Логирование
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Логгер для действий администраторов
 admin_logger = logging.getLogger('admin_actions')
 admin_handler = logging.FileHandler('admin_actions.log', encoding='utf-8')
 admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
@@ -109,6 +107,7 @@ blocked_users_col = db["blocked_users"]
 wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
+admins_col = db["admins"]
 
 async def init_mongodb():
     try:
@@ -128,16 +127,9 @@ async def init_mongodb():
     await promocodes_col.create_index("expires_at")
     await blocked_users_col.create_index("user_id", unique=True)
     await wheel_prizes_col.create_index("id", unique=True)
-
-    try:
-        await admin_logs_col.create_index([("timestamp", -1)])
-    except Exception as e:
-        logger.error(f"Не удалось создать индекс для admin_logs_col: {e}")
-
-    try:
-        await settings_col.create_index("key", unique=True)
-    except Exception as e:
-        logger.error(f"Не удалось создать индекс для settings_col: {e}")
+    await admin_logs_col.create_index([("timestamp", -1)])
+    await settings_col.create_index("key", unique=True)
+    await admins_col.create_index("user_id", unique=True)
 
     logger.info("MongoDB инициализирована.")
 
@@ -148,9 +140,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login")
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-class LoginRequest(BaseModel):
-    password: str
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -170,12 +159,20 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None or username != "admin":
+        user_id: str = payload.get("sub")
+        if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    return username
+
+    if int(user_id) not in ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    admin_doc = await admins_col.find_one({"user_id": user_id})
+    if not admin_doc:
+        default_hash = pwd_context.hash(user_id)
+        await admins_col.insert_one({"user_id": user_id, "password_hash": default_hash})
+    return user_id
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def is_admin(user_id: int) -> bool:
@@ -191,7 +188,7 @@ def log_admin_action(admin_id: int, action: str):
     admin_logger.info(f"Admin {admin_id}: {action}")
 
 def get_main_keyboard(is_admin: bool = False):
-    store_url = BASE_URL  # полный URL бота (главная страница)
+    store_url = BASE_URL
     if is_admin:
         kb = [
             [KeyboardButton(text="📦 Товары")],
@@ -258,7 +255,7 @@ def generate_help_text() -> str:
 ❌ Отмена – отмена текущего действия в любом FSM
 """
 
-# ==================== ФУНКЦИЯ КОНВЕРТАЦИИ ИЗОБРАЖЕНИЙ ====================
+# ==================== КОНВЕРТАЦИЯ ИЗОБРАЖЕНИЙ ====================
 async def convert_to_jpg(input_path: str, output_path: str, quality: int = 90):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _convert_image, input_path, output_path, quality)
@@ -315,7 +312,6 @@ class WheelPrize(StatesGroup):
 
 # ==================== ХЭНДЛЕРЫ БОТА ====================
 
-# ---------- Команда /start ----------
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     admin = is_admin(message.from_user.id)
@@ -326,13 +322,11 @@ async def cmd_start(message: Message):
     )
     await message.answer(welcome, reply_markup=get_main_keyboard(admin))
 
-# ---------- Отмена ----------
 @dp.message(F.text == "❌ Отмена", StateFilter("*"))
 async def cancel_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено.", reply_markup=get_main_keyboard(is_admin(message.from_user.id)))
 
-# ---------- Справка ----------
 @dp.message(F.text == "ℹ️ Команды")
 async def cmd_help(message: Message):
     if not is_admin(message.from_user.id):
@@ -340,7 +334,6 @@ async def cmd_help(message: Message):
     help_text = generate_help_text()
     await message.answer(help_text, parse_mode=None)
 
-# ---------- Обработка заказов из Web App ----------
 @dp.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
     blocked = await blocked_users_col.find_one({"user_id": str(message.from_user.id)})
@@ -413,7 +406,6 @@ async def handle_web_app_data(message: Message):
         logger.error(f"Ошибка при обработке заказа: {e}")
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-# ---------- Добавление товара (FSM) ----------
 @dp.message(F.text == "➕ Добавить товар")
 async def cmd_add(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -493,7 +485,6 @@ async def add_is_new(message: Message, state: FSMContext):
         reply_markup=get_photo_done_keyboard()
     )
 
-# Обработка фото (сжатое от Telegram)
 @dp.message(AddProduct.photos, F.photo)
 async def add_photo(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
@@ -519,7 +510,6 @@ async def add_photo(message: Message, state: FSMContext, bot: Bot):
         reply_markup=get_photo_done_keyboard()
     )
 
-# Обработка документов-изображений
 @dp.message(AddProduct.photos, F.document)
 async def add_photo_document(message: Message, state: FSMContext, bot: Bot):
     if not message.document.mime_type.startswith('image/'):
@@ -583,7 +573,6 @@ async def add_photos_invalid(message: Message):
         reply_markup=get_photo_done_keyboard()
     )
 
-# ---------- Массовое добавление через CSV ----------
 @dp.message(Command("bulk_add"))
 async def cmd_bulk_add(message: Message):
     if not is_admin(message.from_user.id):
@@ -651,7 +640,6 @@ async def handle_csv(message: Message, bot: Bot):
                     discount = int(discount_str)
                     is_new = int(is_new_str)
                     subcat = subcat if subcat else ""
-
                     product_id = f"p{uuid.uuid4().hex[:8]}"
                     product_doc = {
                         "id": product_id,
@@ -677,7 +665,6 @@ async def handle_csv(message: Message, bot: Bot):
     log_admin_action(message.from_user.id, f"Массовое добавление: +{added} товаров")
     await message.answer(result)
 
-# ---------- Экспорт товаров в CSV ----------
 @dp.message(F.text == "📤 Экспорт CSV")
 @dp.message(Command("export_products"))
 async def cmd_export_products(message: Message):
@@ -705,7 +692,6 @@ async def cmd_export_products(message: Message):
     await message.answer_document(FSInputFile(temp_file), caption="📁 Экспорт товаров")
     os.remove(temp_file)
 
-# ---------- Детальная статистика ----------
 @dp.message(Command("stats_detailed"))
 async def cmd_stats_detailed(message: Message):
     if not is_admin(message.from_user.id):
@@ -731,7 +717,6 @@ async def cmd_stats_detailed(message: Message):
         text += "За последние 7 дней заказов нет."
     await message.answer(text)
 
-# ---------- График статистики ----------
 @dp.message(Command("stats_chart"))
 async def cmd_stats_chart(message: Message):
     if not is_admin(message.from_user.id):
@@ -774,7 +759,6 @@ async def cmd_stats_chart(message: Message):
 
     await message.answer_photo(types.BufferedInputFile(buf.read(), filename="chart.png"), caption="📈 График продаж за 30 дней")
 
-# ---------- Поиск товаров ----------
 @dp.message(Command("search"))
 async def cmd_search(message: Message):
     if not is_admin(message.from_user.id):
@@ -795,7 +779,6 @@ async def cmd_search(message: Message):
         text += f"ID: {p['id']} | {p['name']}\n"
     await message.answer(text)
 
-# ---------- Просмотр товаров (админ) ----------
 @dp.message(F.text == "📦 Товары")
 async def show_products_menu(message: Message):
     if not is_admin(message.from_user.id):
@@ -855,7 +838,6 @@ async def handle_list(callback: CallbackQuery):
 async def back_to_categories(callback: CallbackQuery):
     await show_products_menu(callback.message)
 
-# ---------- Удаление товара ----------
 @dp.callback_query(lambda c: c.data.startswith("del_"))
 async def delete_product_confirm(callback: CallbackQuery):
     product_id = callback.data.split("_")[1]
@@ -888,7 +870,6 @@ async def cancel_delete(callback: CallbackQuery):
     await callback.message.delete()
     await cmd_start(callback.message)
 
-# ---------- Редактирование товара ----------
 @dp.callback_query(lambda c: c.data.startswith("edit_") and c.data.endswith("_menu"))
 async def edit_product_menu(callback: CallbackQuery):
     product_id = callback.data.split("_")[1]
@@ -1018,7 +999,6 @@ async def edit_photo(message: Message, state: FSMContext, bot: Bot):
 async def edit_invalid(message: Message):
     await message.answer("❌ Ожидался текст или фото. Попробуйте ещё раз.")
 
-# ---------- Заказы (админ) ----------
 @dp.message(F.text == "📋 Заказы")
 async def show_orders(message: Message):
     if not is_admin(message.from_user.id):
@@ -1136,7 +1116,6 @@ async def change_order_status(callback: CallbackQuery):
     await callback.message.edit_text(f"✅ Статус заказа #{order_id} изменён на «{new_status}».")
     await callback.answer()
 
-# ---------- Промокоды ----------
 @dp.message(Command("add_promo"))
 async def cmd_add_promo(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1278,7 +1257,6 @@ async def delete_promo(message: Message):
     else:
         await message.answer(f"❌ Промокод {code} не найден.")
 
-# ---------- Статистика популярности ----------
 @dp.message(Command("popular"))
 async def cmd_popular(message: Message):
     if not is_admin(message.from_user.id):
@@ -1303,7 +1281,6 @@ async def cmd_popular(message: Message):
         text += f"{item['_id']}: {item['total_quantity']} шт., выручка {item['total_revenue']} ₽\n"
     await message.answer(text)
 
-# ---------- Экспорт всех данных (бекап) ----------
 @dp.message(Command("backup"))
 async def cmd_backup(message: Message):
     if not is_admin(message.from_user.id):
@@ -1329,7 +1306,6 @@ async def cmd_backup(message: Message):
     await message.answer_document(FSInputFile(temp_file), caption="📦 Резервная копия базы данных")
     os.remove(temp_file)
 
-# ---------- Восстановление из бекапа ----------
 @dp.message(Command("restore"))
 async def cmd_restore(message: Message):
     if not is_admin(message.from_user.id):
@@ -1398,7 +1374,6 @@ async def confirm_restore(callback: CallbackQuery):
             os.remove(restore_file)
     await callback.answer()
 
-# ---------- Блокировка пользователей ----------
 @dp.message(Command("block_user"))
 async def cmd_block_user(message: Message):
     if not is_admin(message.from_user.id):
@@ -1446,7 +1421,6 @@ async def list_blocked(message: Message):
         text += f"ID: {b['user_id']} (с {b['blocked_at'].strftime('%Y-%m-%d')})\n"
     await message.answer(text)
 
-# ---------- Управление призами колеса ----------
 @dp.message(Command("wheel_prizes"))
 async def cmd_wheel_prizes(message: Message):
     if not is_admin(message.from_user.id):
@@ -1570,7 +1544,6 @@ async def cmd_del_prize(message: Message):
 async def wheel_back(callback: CallbackQuery):
     await cmd_wheel_prizes(callback.message)
 
-# ---------- Общая статистика (кнопка) ----------
 @dp.message(F.text == "📊 Статистика")
 async def show_stats(message: Message):
     if not is_admin(message.from_user.id):
@@ -1595,7 +1568,7 @@ async def show_stats(message: Message):
 # ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await bot.delete_webhook(drop_pending_updates=True)  # очищаем вебхук
+    await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(dp.start_polling(bot))
     await init_mongodb()
     yield
@@ -1603,7 +1576,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -1612,11 +1584,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Монтируем статику
 os.makedirs("static/uploaded", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ==================== ПУБЛИЧНЫЕ API (для магазина) ====================
+# ==================== ПУБЛИЧНЫЕ API ====================
 @app.get("/api/products")
 async def get_products():
     cursor = products_col.find({})
@@ -1729,20 +1700,25 @@ async def get_wheel_prizes():
     return result
 
 # ==================== АДМИНСКИЕ API ====================
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str
+
 @app.post("/admin/login", response_model=Token)
 async def admin_login(request: LoginRequest):
-    # Получаем хеш пароля из БД
-    settings_doc = await settings_col.find_one({"key": "admin_password_hash"})
-    if not settings_doc:
-        # Если нет, создаём из ADMIN_PASSWORD
-        hash = pwd_context.hash(ADMIN_PASSWORD)
-        await settings_col.insert_one({"key": "admin_password_hash", "value": hash})
-        stored_hash = hash
-    else:
-        stored_hash = settings_doc["value"]
-    if not pwd_context.verify(request.password, stored_hash):
+    if int(request.user_id) not in ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    admin_doc = await admins_col.find_one({"user_id": request.user_id})
+    if not admin_doc:
+        default_hash = pwd_context.hash(request.user_id)
+        await admins_col.insert_one({"user_id": request.user_id, "password_hash": default_hash})
+        admin_doc = await admins_col.find_one({"user_id": request.user_id})
+
+    if not pwd_context.verify(request.password, admin_doc["password_hash"]):
         raise HTTPException(status_code=400, detail="Incorrect password")
-    access_token = create_access_token(data={"sub": "admin"})
+
+    access_token = create_access_token(data={"sub": request.user_id})
     return {"access_token": access_token, "token_type": "bearer"}
 
 class ChangePasswordRequest(BaseModel):
@@ -1750,18 +1726,17 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 @app.post("/admin/change-password")
-async def admin_change_password(req: ChangePasswordRequest, admin=Depends(get_current_admin)):
-    settings_doc = await settings_col.find_one({"key": "admin_password_hash"})
-    if not settings_doc:
-        raise HTTPException(status_code=400, detail="Настройки пароля не найдены")
-    if not pwd_context.verify(req.old_password, settings_doc["value"]):
+async def admin_change_password(req: ChangePasswordRequest, current_user_id: str = Depends(get_current_admin)):
+    admin_doc = await admins_col.find_one({"user_id": current_user_id})
+    if not admin_doc:
+        raise HTTPException(status_code=400, detail="Администратор не найден")
+    if not pwd_context.verify(req.old_password, admin_doc["password_hash"]):
         raise HTTPException(status_code=400, detail="Неверный старый пароль")
     new_hash = pwd_context.hash(req.new_password)
-    await settings_col.update_one(
-        {"key": "admin_password_hash"},
-        {"$set": {"value": new_hash}}
+    await admins_col.update_one(
+        {"user_id": current_user_id},
+        {"$set": {"password_hash": new_hash}}
     )
-    await log_admin_action_db(admin, "Изменил пароль администратора")
     return {"ok": True}
 
 @app.get("/admin/products")
@@ -2045,7 +2020,7 @@ async def admin_save_settings(settings: dict, admin=Depends(get_current_admin)):
             {"$set": {"value": value, "updated_at": datetime.now()}},
             upsert=True
         )
-    await log_admin_action_db(admin, "Обновил настройки", settings)
+    log_admin_action_db(admin, "Обновил настройки", settings)
     return {"ok": True}
 
 @app.post("/admin/upload")
@@ -2070,7 +2045,7 @@ async def admin_upload_image(file: UploadFile = File(...), admin=Depends(get_cur
     image_url = f"{BASE_URL}/static/uploaded/{out_filename}"
     return {"url": image_url}
 
-# ==================== СТАТИЧЕСКАЯ АДМИНКА ====================
+# ==================== СТАТИЧЕСКИЕ СТРАНИЦЫ ====================
 @app.get("/admin", response_class=HTMLResponse)
 async def get_admin_page():
     try:
@@ -2079,7 +2054,6 @@ async def get_admin_page():
     except FileNotFoundError:
         return HTMLResponse(content="Файл админ-панели не найден. Создайте static/admin.html", status_code=404)
 
-# ==================== ГЛАВНАЯ СТРАНИЦА МАГАЗИНА ====================
 @app.get("/", response_class=HTMLResponse)
 async def get_store():
     try:
