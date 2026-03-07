@@ -79,9 +79,7 @@ if not SECRET_KEY:
     raise ValueError("❌ JWT_SECRET не задан!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 день
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-if not ADMIN_PASSWORD:
-    raise ValueError("❌ ADMIN_PASSWORD не задан!")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # используется только для инициализации, потом хеш в БД
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -193,7 +191,7 @@ def log_admin_action(admin_id: int, action: str):
     admin_logger.info(f"Admin {admin_id}: {action}")
 
 def get_main_keyboard(is_admin: bool = False):
-    store_url = "/"  # корень сайта (магазин)
+    store_url = BASE_URL  # полный URL бота (главная страница)
     if is_admin:
         kb = [
             [KeyboardButton(text="📦 Товары")],
@@ -1597,6 +1595,7 @@ async def show_stats(message: Message):
 # ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await bot.delete_webhook(drop_pending_updates=True)  # очищаем вебхук
     asyncio.create_task(dp.start_polling(bot))
     await init_mongodb()
     yield
@@ -1732,10 +1731,38 @@ async def get_wheel_prizes():
 # ==================== АДМИНСКИЕ API ====================
 @app.post("/admin/login", response_model=Token)
 async def admin_login(request: LoginRequest):
-    if request.password != ADMIN_PASSWORD:
+    # Получаем хеш пароля из БД
+    settings_doc = await settings_col.find_one({"key": "admin_password_hash"})
+    if not settings_doc:
+        # Если нет, создаём из ADMIN_PASSWORD
+        hash = pwd_context.hash(ADMIN_PASSWORD)
+        await settings_col.insert_one({"key": "admin_password_hash", "value": hash})
+        stored_hash = hash
+    else:
+        stored_hash = settings_doc["value"]
+    if not pwd_context.verify(request.password, stored_hash):
         raise HTTPException(status_code=400, detail="Incorrect password")
     access_token = create_access_token(data={"sub": "admin"})
     return {"access_token": access_token, "token_type": "bearer"}
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+@app.post("/admin/change-password")
+async def admin_change_password(req: ChangePasswordRequest, admin=Depends(get_current_admin)):
+    settings_doc = await settings_col.find_one({"key": "admin_password_hash"})
+    if not settings_doc:
+        raise HTTPException(status_code=400, detail="Настройки пароля не найдены")
+    if not pwd_context.verify(req.old_password, settings_doc["value"]):
+        raise HTTPException(status_code=400, detail="Неверный старый пароль")
+    new_hash = pwd_context.hash(req.new_password)
+    await settings_col.update_one(
+        {"key": "admin_password_hash"},
+        {"$set": {"value": new_hash}}
+    )
+    await log_admin_action_db(admin, "Изменил пароль администратора")
+    return {"ok": True}
 
 @app.get("/admin/products")
 async def admin_get_products(admin=Depends(get_current_admin)):
@@ -2018,7 +2045,7 @@ async def admin_save_settings(settings: dict, admin=Depends(get_current_admin)):
             {"$set": {"value": value, "updated_at": datetime.now()}},
             upsert=True
         )
-    log_admin_action_db(admin, "Обновил настройки", settings)
+    await log_admin_action_db(admin, "Обновил настройки", settings)
     return {"ok": True}
 
 @app.post("/admin/upload")
