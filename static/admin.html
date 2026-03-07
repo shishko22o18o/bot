@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin Pro</title>
+    <title>Bau28 Admin · управление магазином</title>
     <!-- Chart.js для графиков -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Font Awesome для иконок -->
+    <!-- Font Awesome 6 (бесплатный) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
@@ -15,19 +15,16 @@
             box-sizing: border-box;
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
-
         body {
             background-color: #0d0914;
             color: #f0f0f0;
             padding: 20px;
             min-height: 100vh;
         }
-
         .container {
             max-width: 1400px;
             margin: 0 auto;
         }
-
         h1 {
             font-size: 2.5rem;
             margin-bottom: 1rem;
@@ -37,7 +34,6 @@
             align-items: center;
             gap: 10px;
         }
-
         .card {
             background: rgba(20, 15, 28, 0.8);
             backdrop-filter: blur(10px);
@@ -48,12 +44,10 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             transition: transform 0.2s;
         }
-
         .card:hover {
             transform: translateY(-2px);
             border-color: #b829ff;
         }
-
         .card h3 {
             margin-bottom: 20px;
             color: #b829ff;
@@ -62,7 +56,6 @@
             align-items: center;
             gap: 10px;
         }
-
         .login-card {
             max-width: 400px;
             margin: 100px auto;
@@ -72,13 +65,11 @@
             border: 2px solid #b829ff;
             box-shadow: 0 0 30px #b829ff;
         }
-
         .login-card h2 {
             text-align: center;
             margin-bottom: 30px;
             color: #fff;
         }
-
         input, select, textarea {
             width: 100%;
             padding: 14px 18px;
@@ -90,12 +81,10 @@
             font-size: 1rem;
             transition: border 0.2s;
         }
-
         input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: #b829ff;
         }
-
         button {
             padding: 14px 24px;
             border: none;
@@ -107,43 +96,34 @@
             transition: transform 0.2s, box-shadow 0.2s;
             font-size: 1rem;
         }
-
         button:hover {
             transform: scale(1.02);
             box-shadow: 0 0 15px #b829ff;
         }
-
         button:active {
             transform: scale(0.98);
         }
-
         .btn-outline {
             background: transparent;
             border: 2px solid #b829ff;
             color: #b829ff;
         }
-
         .btn-outline:hover {
             background: rgba(184, 41, 255, 0.1);
             box-shadow: none;
         }
-
         .btn-danger {
             background: #ff4444;
         }
-
         .btn-danger:hover {
             background: #ff6666;
         }
-
         .btn-success {
             background: #4caf50;
         }
-
         .hidden {
             display: none !important;
         }
-
         .tabs {
             display: flex;
             flex-wrap: wrap;
@@ -152,7 +132,6 @@
             border-bottom: 1px solid #333;
             padding-bottom: 15px;
         }
-
         .tab-btn {
             background: #1a1122;
             border: 1px solid #b829ff;
@@ -165,37 +144,30 @@
             flex: 1 0 auto;
             max-width: 150px;
         }
-
         .tab-btn.active {
             background: #b829ff;
             color: white;
             box-shadow: 0 0 15px #b829ff;
         }
-
         .tab-content {
             display: none;
         }
-
         .tab-content.active {
             display: block;
         }
-
         .grid-2 {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 20px;
         }
-
         .grid-3 {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
         }
-
         @media (max-width: 768px) {
             .grid-2, .grid-3 { grid-template-columns: 1fr; }
         }
-
         .item {
             background: #1a1122;
             border-radius: 15px;
@@ -204,33 +176,27 @@
             border: 1px solid #333;
             transition: 0.2s;
         }
-
         .item:hover {
             border-color: #b829ff;
         }
-
         .item-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
         }
-
         .item-header strong {
             font-size: 1.2rem;
             color: #b829ff;
         }
-
         .item-actions {
             display: flex;
             gap: 10px;
         }
-
         .item-actions button {
             padding: 8px 12px;
             font-size: 0.9rem;
         }
-
         .badge {
             background: #b829ff;
             padding: 4px 10px;
@@ -238,7 +204,6 @@
             font-size: 0.8rem;
             font-weight: 600;
         }
-
         .status-select {
             width: auto;
             padding: 6px 12px;
@@ -248,14 +213,12 @@
             border-radius: 20px;
             color: white;
         }
-
         .image-preview {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 10px;
         }
-
         .image-preview img {
             width: 80px;
             height: 80px;
@@ -264,7 +227,6 @@
             border: 1px solid #b829ff;
             cursor: pointer;
         }
-
         .log-entry {
             background: #1a1122;
             padding: 15px;
@@ -272,7 +234,6 @@
             margin-bottom: 10px;
             border-left: 4px solid #b829ff;
         }
-
         .notification {
             position: fixed;
             top: 20px;
@@ -285,17 +246,14 @@
             z-index: 1000;
             display: none;
         }
-
         .notification.show {
             display: block;
             animation: slideIn 0.3s;
         }
-
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
-
         .modal {
             display: none;
             position: fixed;
@@ -307,11 +265,9 @@
             justify-content: center;
             z-index: 1000;
         }
-
         .modal.active {
             display: flex;
         }
-
         .modal-content {
             background: #1a1122;
             padding: 30px;
@@ -322,10 +278,21 @@
             overflow-y: auto;
             border: 2px solid #b829ff;
         }
-
         .modal-content h2 {
             margin-bottom: 20px;
             color: #b829ff;
+        }
+        .hint {
+            font-size: 0.9rem;
+            color: #b0b0b0;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .info-text {
+            font-size: 0.9rem;
+            color: #b0b0b0;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -334,11 +301,11 @@
         <!-- Уведомление -->
         <div id="notification" class="notification"></div>
 
-        <!-- Секция логина -->
+        <!-- Секция логина (одно поле: Telegram ID) -->
         <div id="login-section" class="login-card">
             <h2><i class="fas fa-lock"></i> Вход в админ-панель</h2>
-            <input type="text" id="login-userid" placeholder="Telegram ID">
-            <input type="password" id="login-password" placeholder="Пароль">
+            <input type="text" id="login-userid" placeholder="Ваш Telegram ID" autofocus>
+            <div class="hint">Ваш ID используется как пароль. При первом входе пароль автоматически устанавливается равным ID.</div>
             <button onclick="login()">Войти</button>
             <div id="login-error" style="color: #ff6b6b; margin-top: 10px;"></div>
         </div>
@@ -594,14 +561,17 @@
             }
         })();
 
-        // Вход
+        // Вход: одно поле ID (оно же пароль)
         async function login() {
             const userId = document.getElementById('login-userid').value;
-            const password = document.getElementById('login-password').value;
+            if (!userId) {
+                document.getElementById('login-error').textContent = 'Введите Telegram ID';
+                return;
+            }
             const res = await fetch('/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, password: password })
+                body: JSON.stringify({ user_id: userId, password: userId }) // пароль = ID
             });
             if (res.ok) {
                 const data = await res.json();
@@ -1213,7 +1183,7 @@
             }
         }
 
-        // Смена пароля
+        // Смена пароля (теперь пароль может быть любым)
         async function changePassword() {
             const oldPass = document.getElementById('old-password').value;
             const newPass = document.getElementById('new-password').value;
