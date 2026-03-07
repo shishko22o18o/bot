@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin · управление магазином</title>
+    <title>Bau28 Admin · вход по ID</title>
     <!-- Chart.js для графиков -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Font Awesome 6 (бесплатный) -->
+    <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
@@ -289,11 +289,6 @@
             margin-bottom: 15px;
             text-align: center;
         }
-        .info-text {
-            font-size: 0.9rem;
-            color: #b0b0b0;
-            margin: 10px 0;
-        }
     </style>
 </head>
 <body>
@@ -301,11 +296,11 @@
         <!-- Уведомление -->
         <div id="notification" class="notification"></div>
 
-        <!-- Секция логина (одно поле: Telegram ID) -->
+        <!-- Секция логина (только Telegram ID) -->
         <div id="login-section" class="login-card">
             <h2><i class="fas fa-lock"></i> Вход в админ-панель</h2>
             <input type="text" id="login-userid" placeholder="Ваш Telegram ID" autofocus>
-            <div class="hint">Ваш ID используется как пароль. При первом входе пароль автоматически устанавливается равным ID.</div>
+            <div class="hint">Введите ваш Telegram ID для входа</div>
             <button onclick="login()">Войти</button>
             <div id="login-error" style="color: #ff6b6b; margin-top: 10px;"></div>
         </div>
@@ -420,16 +415,7 @@
                             <button type="button" onclick="saveSettings()">Сохранить</button>
                         </form>
                     </div>
-                    <div class="card">
-                        <h3><i class="fas fa-key"></i> Смена пароля</h3>
-                        <form id="change-password-form">
-                            <input type="password" id="old-password" placeholder="Старый пароль" required>
-                            <input type="password" id="new-password" placeholder="Новый пароль" required>
-                            <input type="password" id="confirm-password" placeholder="Подтвердите пароль" required>
-                            <button type="button" onclick="changePassword()">Сменить пароль</button>
-                        </form>
-                        <div id="password-message" style="margin-top:10px;"></div>
-                    </div>
+                    <!-- Секция смены пароля полностью удалена -->
                 </div>
             </div>
 
@@ -561,17 +547,18 @@
             }
         })();
 
-        // Вход: одно поле ID (оно же пароль)
+        // Вход: только ID (пароль не нужен)
         async function login() {
             const userId = document.getElementById('login-userid').value;
             if (!userId) {
                 document.getElementById('login-error').textContent = 'Введите Telegram ID';
                 return;
             }
+            // Отправляем POST с одним полем user_id
             const res = await fetch('/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, password: userId }) // пароль = ID
+                body: JSON.stringify({ user_id: userId }) // пароль не передаём
             });
             if (res.ok) {
                 const data = await res.json();
@@ -1180,37 +1167,6 @@
                 showNotification('Настройки сохранены');
             } else {
                 showNotification('Ошибка сохранения', true);
-            }
-        }
-
-        // Смена пароля (теперь пароль может быть любым)
-        async function changePassword() {
-            const oldPass = document.getElementById('old-password').value;
-            const newPass = document.getElementById('new-password').value;
-            const confirm = document.getElementById('confirm-password').value;
-            if (newPass !== confirm) {
-                document.getElementById('password-message').style.color = 'red';
-                document.getElementById('password-message').textContent = 'Пароли не совпадают';
-                return;
-            }
-            const res = await fetch('/admin/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ old_password: oldPass, new_password: newPass })
-            });
-            if (res.ok) {
-                document.getElementById('password-message').style.color = 'green';
-                document.getElementById('password-message').textContent = 'Пароль успешно изменён';
-                document.getElementById('old-password').value = '';
-                document.getElementById('new-password').value = '';
-                document.getElementById('confirm-password').value = '';
-            } else {
-                const err = await res.text();
-                document.getElementById('password-message').style.color = 'red';
-                document.getElementById('password-message').textContent = 'Ошибка: ' + err;
             }
         }
 
