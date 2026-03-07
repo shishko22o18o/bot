@@ -38,7 +38,6 @@ import certifi
 
 # JWT
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 # Доп. библиотеки
@@ -78,7 +77,6 @@ if not SECRET_KEY:
     raise ValueError("❌ JWT_SECRET не задан!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 день
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # не используется, оставлен для совместимости
 
 # Логирование
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -107,7 +105,6 @@ blocked_users_col = db["blocked_users"]
 wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
-admins_col = db["admins"]
 
 async def init_mongodb():
     try:
@@ -129,12 +126,10 @@ async def init_mongodb():
     await wheel_prizes_col.create_index("id", unique=True)
     await admin_logs_col.create_index([("timestamp", -1)])
     await settings_col.create_index("key", unique=True)
-    await admins_col.create_index("user_id", unique=True)
 
     logger.info("MongoDB инициализирована.")
 
 # ==================== JWT АУТЕНТИФИКАЦИЯ ====================
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login")
 
 class Token(BaseModel):
@@ -167,11 +162,6 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
 
     if int(user_id) not in ADMIN_IDS:
         raise HTTPException(status_code=403, detail="Access denied")
-
-    admin_doc = await admins_col.find_one({"user_id": user_id})
-    if not admin_doc:
-        default_hash = pwd_context.hash(user_id)
-        await admins_col.insert_one({"user_id": user_id, "password_hash": default_hash})
     return user_id
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -489,21 +479,17 @@ async def add_is_new(message: Message, state: FSMContext):
 async def add_photo(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     photos = data.get('photos', [])
-
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
     temp_path = f"/tmp/temp_{uuid.uuid4().hex}.jpg"
     await bot.download_file(file.file_path, temp_path)
-
     out_filename = f"{uuid.uuid4().hex}.jpg"
     out_path = f"static/uploaded/{out_filename}"
     os.makedirs("static/uploaded", exist_ok=True)
     await convert_to_jpg(temp_path, out_path)
     os.remove(temp_path)
-
     photos.append(f"/static/uploaded/{out_filename}")
     await state.update_data(photos=photos)
-
     await message.answer(
         f"✅ Фото добавлено! Всего фото: {len(photos)}.\n"
         "Отправьте ещё или нажмите '✅ Готово'.",
@@ -515,25 +501,20 @@ async def add_photo_document(message: Message, state: FSMContext, bot: Bot):
     if not message.document.mime_type.startswith('image/'):
         await message.answer("❌ Пожалуйста, отправьте изображение.")
         return
-
     data = await state.get_data()
     photos = data.get('photos', [])
-
     file = await bot.get_file(message.document.file_id)
     original_ext = os.path.splitext(message.document.file_name)[1].lower()
     temp_filename = f"temp_{uuid.uuid4().hex}{original_ext}"
     temp_path = f"/tmp/{temp_filename}"
     await bot.download_file(file.file_path, temp_path)
-
     out_filename = f"{uuid.uuid4().hex}.jpg"
     out_path = f"static/uploaded/{out_filename}"
     os.makedirs("static/uploaded", exist_ok=True)
     await convert_to_jpg(temp_path, out_path)
     os.remove(temp_path)
-
     photos.append(f"/static/uploaded/{out_filename}")
     await state.update_data(photos=photos)
-
     await message.answer(
         f"✅ Фото добавлено! Всего фото: {len(photos)}.\n"
         "Отправьте ещё или нажмите '✅ Готово'.",
@@ -546,7 +527,6 @@ async def add_photos_done(message: Message, state: FSMContext):
     photos = data.get('photos', [])
     if not photos:
         photos = []
-
     product_id = f"p{uuid.uuid4().hex[:8]}"
     product_doc = {
         "id": product_id,
@@ -561,7 +541,6 @@ async def add_photos_done(message: Message, state: FSMContext):
         "created_at": datetime.now()
     }
     await products_col.insert_one(product_doc)
-
     await state.clear()
     log_admin_action(message.from_user.id, f"Добавил товар ID {product_id} ({data['name']})")
     await message.answer(f"✅ Товар добавлен! ID: {product_id}", reply_markup=get_main_keyboard(True))
@@ -672,11 +651,9 @@ async def cmd_export_products(message: Message):
         return
     cursor = products_col.find({})
     products = await cursor.to_list(length=10000)
-
     if not products:
         await message.answer("В базе нет товаров.")
         return
-
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "images"])
@@ -685,7 +662,6 @@ async def cmd_export_products(message: Message):
         writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], images_str])
     csv_data = output.getvalue().encode('utf-8')
     output.close()
-
     temp_file = f"/tmp/export_{message.from_user.id}.csv"
     with open(temp_file, "wb") as f:
         f.write(csv_data)
@@ -708,7 +684,6 @@ async def cmd_stats_detailed(message: Message):
     ]
     cursor = orders_col.aggregate(pipeline)
     rows = await cursor.to_list(length=10)
-
     text = "📊 <b>Статистика по дням (последние 7 дней):</b>\n\n"
     if rows:
         for r in rows:
@@ -724,7 +699,6 @@ async def cmd_stats_chart(message: Message):
     if not MATPLOTLIB_AVAILABLE:
         await message.answer("❌ Библиотека matplotlib не установлена.")
         return
-
     thirty_days_ago = datetime.now() - timedelta(days=30)
     pipeline = [
         {"$match": {"created_at": {"$gt": thirty_days_ago}}},
@@ -736,14 +710,11 @@ async def cmd_stats_chart(message: Message):
     ]
     cursor = orders_col.aggregate(pipeline)
     data = await cursor.to_list(length=31)
-
     if not data:
         await message.answer("Нет данных за последние 30 дней.")
         return
-
     dates = [d['_id'] for d in data]
     totals = [d['total'] for d in data]
-
     plt.figure(figsize=(10, 5))
     plt.plot(dates, totals, marker='o', linestyle='-', color='b')
     plt.xlabel('Дата')
@@ -751,12 +722,10 @@ async def cmd_stats_chart(message: Message):
     plt.title('Продажи за последние 30 дней')
     plt.xticks(rotation=45)
     plt.tight_layout()
-
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
     buf.seek(0)
     plt.close()
-
     await message.answer_photo(types.BufferedInputFile(buf.read(), filename="chart.png"), caption="📈 График продаж за 30 дней")
 
 @dp.message(Command("search"))
@@ -770,7 +739,6 @@ async def cmd_search(message: Message):
     query = args[1]
     cursor = products_col.find({"name": {"$regex": query, "$options": "i"}})
     results = await cursor.to_list(length=50)
-
     if not results:
         await message.answer(f"По запросу «{query}» ничего не найдено.")
         return
@@ -796,35 +764,28 @@ async def show_product_list(cat: str, page: int, callback: CallbackQuery):
     cursor = products_col.find({"category": cat}).sort("created_at", -1).skip(skip).limit(5)
     products = await cursor.to_list(length=5)
     total = await products_col.count_documents({"category": cat})
-
     if not products:
         await callback.message.edit_text("В этой категории пока нет товаров.")
         return
-
     text = f"Товары в категории {cat} (стр. {page+1}):\n\n"
     for p in products:
         final_price = p['price'] if not p['discount'] else p['price'] * (100 - p['discount']) // 100
         desc = p['description'][:50] + "..." if p['description'] and len(p['description']) > 50 else (p['description'] or "без описания")
         text += f"ID: {p['id']} | {p['name']} | {final_price}₽\n   Описание: {desc}\n\n"
-
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"list_{cat}_{page-1}"))
     if (page+1)*5 < total:
         nav_buttons.append(InlineKeyboardButton(text="▶️", callback_data=f"list_{cat}_{page+1}"))
-
     inline_kb = []
     if nav_buttons:
         inline_kb.append(nav_buttons)
-
     for p in products:
         inline_kb.append([
             InlineKeyboardButton(text=f"✏️ {p['name'][:15]}...", callback_data=f"edit_{p['id']}_menu"),
             InlineKeyboardButton(text="🗑", callback_data=f"del_{p['id']}")
         ])
-
     inline_kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_categories")])
-
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=inline_kb))
 
 @dp.callback_query(lambda c: c.data.startswith("list_"))
@@ -877,7 +838,6 @@ async def edit_product_menu(callback: CallbackQuery):
     if not product:
         await callback.message.edit_text("Товар не найден.")
         return
-
     text = f"Редактирование товара ID {product_id}:\n"
     text += f"Название: {product['name']}\n"
     text += f"Описание: {product['description'][:100]}...\n"
@@ -887,7 +847,6 @@ async def edit_product_menu(callback: CallbackQuery):
         text += f"Подкатегория: {product['subcategory']}\n"
     text += f"Скидка: {product['discount']}%\n"
     text += f"Новинка: {'да' if product['is_new'] else 'нет'}\n"
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{product_id}_field_name")],
         [InlineKeyboardButton(text="📝 Описание", callback_data=f"edit_{product_id}_field_description")],
@@ -939,14 +898,12 @@ async def edit_text_field(message: Message, state: FSMContext):
     product_id = data['edit_id']
     field = data['edit_field']
     new_value = message.text
-
     if field in ["price", "discount"] and not new_value.isdigit():
         await message.answer(f"❌ {field} должно быть числом. Попробуйте ещё раз:")
         return
     if field == "category" and new_value not in ['clothes', 'accessories', 'vape', 'electronics']:
         await message.answer("❌ Неверная категория. Допустимы: clothes, accessories, vape, electronics")
         return
-
     update_data = {}
     if field == "name":
         update_data["name"] = new_value
@@ -959,11 +916,9 @@ async def edit_text_field(message: Message, state: FSMContext):
         update_data["subcategory"] = ""
     elif field == "discount":
         update_data["discount"] = int(new_value)
-
     if update_data:
         await products_col.update_one({"id": product_id}, {"$set": update_data})
         log_admin_action(message.from_user.id, f"Изменил поле {field} товара ID {product_id} на {new_value}")
-
     await state.clear()
     await message.answer("✅ Поле обновлено.", reply_markup=get_main_keyboard(True))
 
@@ -975,13 +930,11 @@ async def edit_photo(message: Message, state: FSMContext, bot: Bot):
     file = await bot.get_file(photo.file_id)
     temp_path = f"/tmp/temp_{uuid.uuid4().hex}.jpg"
     await bot.download_file(file.file_path, temp_path)
-
     out_filename = f"{uuid.uuid4().hex}.jpg"
     out_path = f"static/uploaded/{out_filename}"
     os.makedirs("static/uploaded", exist_ok=True)
     await convert_to_jpg(temp_path, out_path)
     os.remove(temp_path)
-
     product = await get_product_by_id(product_id)
     if product and 'images' in product:
         for img_path in product['images']:
@@ -989,7 +942,6 @@ async def edit_photo(message: Message, state: FSMContext, bot: Bot):
                 local_path = img_path.replace('/static/uploaded/', 'static/uploaded/')
                 if os.path.exists(local_path):
                     os.remove(local_path)
-
     await products_col.update_one({"id": product_id}, {"$set": {"images": [f"/static/uploaded/{out_filename}"]}})
     await state.clear()
     log_admin_action(message.from_user.id, f"Изменил фото товара ID {product_id}")
@@ -1037,7 +989,6 @@ async def show_all_orders(message: Message):
                 filter_status = arg.split("=")[1]
             elif arg.startswith("date="):
                 filter_date = arg.split("=")[1]
-
     query = {}
     if filter_status:
         query["status"] = filter_status
@@ -1047,13 +998,11 @@ async def show_all_orders(message: Message):
             query["created_at"] = {"$gte": date_obj, "$lt": date_obj + timedelta(days=1)}
         except:
             pass
-
     cursor = orders_col.find(query).sort("created_at", -1).limit(50)
     orders = await cursor.to_list(length=50)
     if not orders:
         await message.answer("Нет заказов по заданным критериям.")
         return
-
     for o in orders:
         items = o['items']
         text = f"🛒 Заказ #{o['id']}\n"
@@ -1288,12 +1237,10 @@ async def cmd_backup(message: Message):
     products = await products_col.find().to_list(length=10000)
     orders = await orders_col.find().to_list(length=10000)
     promos = await promocodes_col.find().to_list(length=1000)
-
     def convert_dates(obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
         return obj
-
     backup = {
         "products": [{k: convert_dates(v) for k, v in p.items()} for p in products],
         "orders": [{k: convert_dates(v) for k, v in o.items()} for o in orders],
@@ -1319,18 +1266,15 @@ async def handle_restore(message: Message, bot: Bot):
     if not message.document.file_name.endswith('.json'):
         await message.answer("❌ Пожалуйста, отправьте файл с расширением .json")
         return
-
     file = await bot.get_file(message.document.file_id)
     file_path = f"/tmp/restore_{message.from_user.id}.json"
     await bot.download_file(file.file_path, file_path)
-
     with open(file_path, 'r', encoding='utf-8') as f:
         try:
             backup = json.load(f)
         except Exception as e:
             await message.answer(f"❌ Ошибка парсинга JSON: {e}")
             return
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Подтверждаю восстановление", callback_data="confirm_restore")]
     ])
@@ -1347,25 +1291,21 @@ async def confirm_restore(callback: CallbackQuery):
         await products_col.delete_many({})
         await orders_col.delete_many({})
         await promocodes_col.delete_many({})
-
         if 'products' in backup:
             for p in backup['products']:
                 if 'created_at' in p and isinstance(p['created_at'], str):
                     p['created_at'] = datetime.fromisoformat(p['created_at'])
                 await products_col.insert_one(p)
-
         if 'orders' in backup:
             for o in backup['orders']:
                 if 'created_at' in o and isinstance(o['created_at'], str):
                     o['created_at'] = datetime.fromisoformat(o['created_at'])
                 await orders_col.insert_one(o)
-
         if 'promocodes' in backup:
             for pr in backup['promocodes']:
                 if 'expires_at' in pr and isinstance(pr['expires_at'], str):
                     pr['expires_at'] = datetime.fromisoformat(pr['expires_at'])
                 await promocodes_col.insert_one(pr)
-
         await callback.message.edit_text("✅ Восстановление выполнено успешно.")
     except Exception as e:
         await callback.message.edit_text(f"❌ Ошибка при восстановлении: {e}")
@@ -1555,7 +1495,6 @@ async def show_stats(message: Message):
     result = await cursor.to_list(length=1)
     total_sales = result[0]['total_sales'] if result else 0
     new_orders = await orders_col.count_documents({"status": "new"})
-
     text = (
         f"📊 <b>Статистика магазина</b>\n\n"
         f"📦 Товаров: {total_products}\n"
@@ -1634,7 +1573,6 @@ async def create_order(request: Request):
                 discount = promo['value']
             total -= discount
             await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
-
     order_id = str(uuid.uuid4().hex[:8])
     order_doc = {
         "id": order_id,
@@ -1657,18 +1595,14 @@ async def check_promo(request: Request):
         code = data.get('code', '').strip().upper()
         if not code:
             return {"valid": False, "error": "Введите код"}
-
         promo = await promocodes_col.find_one({"code": code})
         if not promo:
             return {"valid": False, "error": "Промокод не найден"}
-
         now = datetime.now()
         if promo.get('expires_at', now) < now:
             return {"valid": False, "error": "Срок действия истёк"}
-
         if promo.get('used_count', 0) >= promo.get('max_uses', 0):
             return {"valid": False, "error": "Промокод больше недействителен"}
-
         if promo['type'] == 'wheel':
             return {"valid": True, "type": "wheel", "code": code}
         else:
@@ -1702,42 +1636,13 @@ async def get_wheel_prizes():
 # ==================== АДМИНСКИЕ API ====================
 class LoginRequest(BaseModel):
     user_id: str
-    password: str
 
 @app.post("/admin/login", response_model=Token)
 async def admin_login(request: LoginRequest):
     if int(request.user_id) not in ADMIN_IDS:
         raise HTTPException(status_code=403, detail="Access denied")
-
-    admin_doc = await admins_col.find_one({"user_id": request.user_id})
-    if not admin_doc:
-        default_hash = pwd_context.hash(request.user_id)
-        await admins_col.insert_one({"user_id": request.user_id, "password_hash": default_hash})
-        admin_doc = await admins_col.find_one({"user_id": request.user_id})
-
-    if not pwd_context.verify(request.password, admin_doc["password_hash"]):
-        raise HTTPException(status_code=400, detail="Incorrect password")
-
     access_token = create_access_token(data={"sub": request.user_id})
     return {"access_token": access_token, "token_type": "bearer"}
-
-class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
-
-@app.post("/admin/change-password")
-async def admin_change_password(req: ChangePasswordRequest, current_user_id: str = Depends(get_current_admin)):
-    admin_doc = await admins_col.find_one({"user_id": current_user_id})
-    if not admin_doc:
-        raise HTTPException(status_code=400, detail="Администратор не найден")
-    if not pwd_context.verify(req.old_password, admin_doc["password_hash"]):
-        raise HTTPException(status_code=400, detail="Неверный старый пароль")
-    new_hash = pwd_context.hash(req.new_password)
-    await admins_col.update_one(
-        {"user_id": current_user_id},
-        {"$set": {"password_hash": new_hash}}
-    )
-    return {"ok": True}
 
 @app.get("/admin/products")
 async def admin_get_products(admin=Depends(get_current_admin)):
@@ -1928,19 +1833,16 @@ async def admin_backup(admin=Depends(get_current_admin)):
         products = await products_col.find().to_list(length=10000)
         orders = await orders_col.find().to_list(length=10000)
         promos = await promocodes_col.find().to_list(length=1000)
-
         def convert_dates(obj):
             if isinstance(obj, datetime):
                 return obj.isoformat()
             return obj
-
         for p in products:
             p['_id'] = str(p['_id'])
         for o in orders:
             o['_id'] = str(o['_id'])
         for pr in promos:
             pr['_id'] = str(pr['_id'])
-
         backup = {
             "products": [{k: convert_dates(v) for k, v in p.items()} for p in products],
             "orders": [{k: convert_dates(v) for k, v in o.items()} for o in orders],
@@ -1960,29 +1862,24 @@ async def admin_restore(file: UploadFile = File(...), admin=Depends(get_current_
         backup = json.loads(content)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
-
     await products_col.delete_many({})
     await orders_col.delete_many({})
     await promocodes_col.delete_many({})
-
     if 'products' in backup:
         for p in backup['products']:
             if 'created_at' in p and isinstance(p['created_at'], str):
                 p['created_at'] = datetime.fromisoformat(p['created_at'])
             await products_col.insert_one(p)
-
     if 'orders' in backup:
         for o in backup['orders']:
             if 'created_at' in o and isinstance(o['created_at'], str):
                 o['created_at'] = datetime.fromisoformat(o['created_at'])
             await orders_col.insert_one(o)
-
     if 'promocodes' in backup:
         for pr in backup['promocodes']:
             if 'expires_at' in pr and isinstance(pr['expires_at'], str):
                 pr['expires_at'] = datetime.fromisoformat(pr['expires_at'])
             await promocodes_col.insert_one(pr)
-
     log_admin_action(admin, "Выполнил восстановление из резервной копии")
     return {"ok": True}
 
@@ -2027,21 +1924,16 @@ async def admin_save_settings(settings: dict, admin=Depends(get_current_admin)):
 async def admin_upload_image(file: UploadFile = File(...), admin=Depends(get_current_admin)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
-
     ext = os.path.splitext(file.filename)[1].lower()
     temp_filename = f"temp_{uuid.uuid4().hex}{ext}"
     temp_path = f"/tmp/{temp_filename}"
-
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-
     out_filename = f"{uuid.uuid4().hex}.jpg"
     out_path = f"static/uploaded/{out_filename}"
     os.makedirs("static/uploaded", exist_ok=True)
-
     await convert_to_jpg(temp_path, out_path)
     os.remove(temp_path)
-
     image_url = f"{BASE_URL}/static/uploaded/{out_filename}"
     return {"url": image_url}
 
