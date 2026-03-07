@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin Pro</title>
-    <!-- Chart.js для графиков -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Bau28 Admin</title>
     <style>
         * {
             margin: 0;
@@ -223,7 +221,7 @@
         </div>
 
         <div id="admin-section" class="hidden">
-            <h1>Bau28 Admin Pro</h1>
+            <h1>Bau28 Admin</h1>
             <div class="tabs" id="tabs">
                 <button class="tab-btn active" data-tab="products">Товары</button>
                 <button class="tab-btn" data-tab="orders">Заказы</button>
@@ -236,7 +234,6 @@
                 <button class="tab-btn" data-tab="backup">Резервное копирование</button>
             </div>
 
-            <!-- ========== ТОВАРЫ (улучшенная версия) ========== -->
             <div id="tab-products" class="tab-content active">
                 <div class="card">
                     <h3>Управление товарами</h3>
@@ -245,7 +242,6 @@
                 </div>
             </div>
 
-            <!-- ========== ЗАКАЗЫ ========== -->
             <div id="tab-orders" class="tab-content">
                 <div class="card">
                     <h3>Заказы</h3>
@@ -265,7 +261,6 @@
                 </div>
             </div>
 
-            <!-- ========== ПРОМОКОДЫ ========== -->
             <div id="tab-promos" class="tab-content">
                 <div class="card">
                     <h3>Промокоды</h3>
@@ -274,7 +269,6 @@
                 </div>
             </div>
 
-            <!-- ========== ПРИЗЫ КОЛЕСА ========== -->
             <div id="tab-wheel" class="tab-content">
                 <div class="card">
                     <h3>Призы колеса фортуны</h3>
@@ -283,7 +277,6 @@
                 </div>
             </div>
 
-            <!-- ========== ПОЛЬЗОВАТЕЛИ ========== -->
             <div id="tab-users" class="tab-content">
                 <div class="card">
                     <h3>Все пользователи</h3>
@@ -305,7 +298,6 @@
                 </div>
             </div>
 
-            <!-- ========== СТАТИСТИКА ========== -->
             <div id="tab-stats" class="tab-content">
                 <div class="grid-2">
                     <div class="card">
@@ -317,13 +309,8 @@
                         <div id="popular-products"></div>
                     </div>
                 </div>
-                <div class="card">
-                    <h3>Продажи по дням</h3>
-                    <canvas id="salesChart" width="400" height="200"></canvas>
-                </div>
             </div>
 
-            <!-- ========== ЛОГИ ДЕЙСТВИЙ ========== -->
             <div id="tab-logs" class="tab-content">
                 <div class="card">
                     <h3>Журнал действий</h3>
@@ -331,7 +318,6 @@
                 </div>
             </div>
 
-            <!-- ========== НАСТРОЙКИ МАГАЗИНА ========== -->
             <div id="tab-settings" class="tab-content">
                 <div class="card">
                     <h3>Настройки</h3>
@@ -347,7 +333,6 @@
                 </div>
             </div>
 
-            <!-- ========== РЕЗЕРВНОЕ КОПИРОВАНИЕ ========== -->
             <div id="tab-backup" class="tab-content">
                 <div class="card">
                     <h3>Резервное копирование</h3>
@@ -363,7 +348,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно добавления/редактирования товара (с загрузкой фото) -->
     <div id="product-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
         <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:600px; width:90%; max-height:90%; overflow-y:auto;">
             <h2 id="product-form-title">Добавление товара</h2>
@@ -400,7 +384,6 @@
         </div>
     </div>
 
-    <!-- Модалка добавления промокода -->
     <div id="promo-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
         <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:500px; width:90%;">
             <h2>Добавление промокода</h2>
@@ -426,7 +409,6 @@
         </div>
     </div>
 
-    <!-- Модалка добавления приза колеса -->
     <div id="wheel-form-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center;">
         <div style="background:#1a1122; padding:30px; border-radius:20px; max-width:500px; width:90%;">
             <h2>Добавление приза</h2>
@@ -452,7 +434,6 @@
         let token = localStorage.getItem('token');
         let salesChart = null;
 
-        // Загрузка страницы
         (async function() {
             if (token) {
                 try {
@@ -477,7 +458,6 @@
             }
         })();
 
-        // Вход
         async function login() {
             const password = document.getElementById('password').value;
             const res = await fetch('/admin/login', {
@@ -504,7 +484,6 @@
             }
         }
 
-        // Переключение вкладок
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -515,7 +494,7 @@
             });
         });
 
-        // ========== ТОВАРЫ (с поддержкой нескольких фото) ==========
+        // ========== ТОВАРЫ ==========
         async function loadProducts() {
             const res = await fetch('/admin/products', { headers: { 'Authorization': `Bearer ${token}` } });
             const products = await res.json();
@@ -548,7 +527,6 @@
             container.innerHTML = html;
         }
 
-        // Предпросмотр загружаемых изображений
         function previewImages(event) {
             const preview = document.getElementById('image-preview');
             preview.innerHTML = '';
@@ -561,6 +539,28 @@
                 };
                 reader.readAsDataURL(file);
             });
+        }
+
+        async function uploadImages(files) {
+            const urls = [];
+            for (let file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch('/admin/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('Uploaded', data.url);
+                    urls.push(data.url);
+                } else {
+                    const err = await res.text();
+                    console.error('Upload failed', err);
+                }
+            }
+            return urls;
         }
 
         function showAddProductForm() {
@@ -578,24 +578,6 @@
             document.getElementById('product-form-modal').style.display = 'flex';
         }
 
-async function uploadImages(files) {
-    const urls = [];
-    for (let file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await fetch('/admin/upload', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
-        });
-        if (res.ok) {
-            const data = await res.json();
-            urls.push(data.url);
-        }
-    }
-    return urls;
-}
-
         function editProduct(id) {
             fetch(`/admin/products`, { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(res => res.json())
@@ -611,7 +593,6 @@ async function uploadImages(files) {
                     document.getElementById('product-subcategory').value = product.subcategory || '';
                     document.getElementById('product-discount').value = product.discount || 0;
                     document.getElementById('product-isnew').value = product.is_new ? '1' : '0';
-                    // Заполняем превью существующими изображениями
                     const preview = document.getElementById('image-preview');
                     preview.innerHTML = '';
                     (product.images || []).forEach(imgUrl => {
@@ -627,58 +608,59 @@ async function uploadImages(files) {
             document.getElementById('product-form-modal').style.display = 'none';
         }
 
-      async function saveProduct() {
-    const id = document.getElementById('product-id').value;
-    const name = document.getElementById('product-name').value;
-    const description = document.getElementById('product-description').value;
-    const price = parseInt(document.getElementById('product-price').value);
-    const category = document.getElementById('product-category').value;
-    const subcategory = document.getElementById('product-subcategory').value;
-    const discount = parseInt(document.getElementById('product-discount').value) || 0;
-    const is_new = parseInt(document.getElementById('product-isnew').value) === 1;
-    const imageFiles = document.getElementById('product-images').files;
+        async function saveProduct() {
+            const id = document.getElementById('product-id').value;
+            const name = document.getElementById('product-name').value;
+            const description = document.getElementById('product-description').value;
+            const price = parseInt(document.getElementById('product-price').value);
+            const category = document.getElementById('product-category').value;
+            const subcategory = document.getElementById('product-subcategory').value;
+            const discount = parseInt(document.getElementById('product-discount').value) || 0;
+            const is_new = parseInt(document.getElementById('product-isnew').value) === 1;
+            const imageFiles = document.getElementById('product-images').files;
 
-    let imageUrls = [];
-    if (imageFiles.length > 0) {
-        try {
-            imageUrls = await uploadImages(imageFiles);
-        } catch (e) {
-            document.getElementById('product-form-error').textContent = 'Ошибка загрузки изображений';
-            return;
+            let imageUrls = [];
+            if (imageFiles.length > 0) {
+                try {
+                    imageUrls = await uploadImages(imageFiles);
+                } catch (e) {
+                    document.getElementById('product-form-error').textContent = 'Ошибка загрузки изображений';
+                    return;
+                }
+            }
+
+            const productData = {
+                name,
+                description,
+                price,
+                category,
+                subcategory,
+                discount,
+                is_new,
+                images: imageUrls
+            };
+
+            const url = id ? `/admin/products/${id}` : '/admin/products';
+            const method = id ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(productData)
+            });
+
+            if (res.ok) {
+                closeProductForm();
+                loadProducts();
+            } else {
+                const err = await res.text();
+                document.getElementById('product-form-error').textContent = 'Ошибка: ' + err;
+            }
         }
-    }
 
-    const productData = {
-        name,
-        description,
-        price,
-        category,
-        subcategory,
-        discount,
-        is_new,
-        images: imageUrls
-    };
-
-    const url = id ? `/admin/products/${id}` : '/admin/products';
-    const method = id ? 'PUT' : 'POST';
-
-    const res = await fetch(url, {
-        method: method,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(productData)
-    });
-
-    if (res.ok) {
-        closeProductForm();
-        loadProducts();
-    } else {
-        const err = await res.text();
-        document.getElementById('product-form-error').textContent = 'Ошибка: ' + err;
-    }
-}
         async function deleteProduct(id) {
             if (!confirm('Удалить товар?')) return;
             const res = await fetch(`/admin/products/${id}`, {
@@ -744,7 +726,6 @@ async function uploadImages(files) {
         }
 
         async function exportOrdersCSV() {
-            // Получаем все заказы (можно с фильтром) и формируем CSV
             const res = await fetch('/admin/orders', { headers: { 'Authorization': `Bearer ${token}` } });
             const orders = await res.json();
             let csv = 'ID,Покупатель,ID пользователя,Сумма,Статус,Дата,Товары\n';
@@ -752,7 +733,7 @@ async function uploadImages(files) {
                 const items = o.items.map(i => `${i.name} (${i.quantity})`).join('; ');
                 csv += `"${o.id}","${o.user_name}","${o.user_id}",${o.total},"${o.status}","${new Date(o.created_at).toLocaleString()}","${items}"\n`;
             });
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM для кириллицы
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             link.download = `orders_${new Date().toISOString().slice(0,10)}.csv`;
@@ -923,16 +904,14 @@ async function uploadImages(files) {
             }
         }
 
-        // ========== ПОЛЬЗОВАТЕЛИ (сводная таблица) ==========
+        // ========== ПОЛЬЗОВАТЕЛИ ==========
         async function loadUsers() {
-            // Получаем всех пользователей из заказов и блокировок
             const ordersRes = await fetch('/admin/orders', { headers: { 'Authorization': `Bearer ${token}` } });
             const orders = await ordersRes.json();
             const blockedRes = await fetch('/admin/blocked-users', { headers: { 'Authorization': `Bearer ${token}` } });
             const blocked = await blockedRes.json();
             const blockedIds = new Set(blocked.map(b => b.user_id));
             
-            // Группируем по user_id
             const usersMap = new Map();
             orders.forEach(o => {
                 const userId = o.user_id;
@@ -1014,39 +993,10 @@ async function uploadImages(files) {
                 popHtml = '<p>Нет данных</p>';
             }
             document.getElementById('popular-products').innerHTML = popHtml;
-
-            // Загрузка детальной статистики для графика
-            const detailedRes = await fetch('/admin/stats/detailed?days=30', { headers: { 'Authorization': `Bearer ${token}` } });
-            const detailed = await detailedRes.json();
-            const labels = detailed.map(d => d._id).reverse();
-            const data = detailed.map(d => d.total).reverse();
-
-            if (salesChart) salesChart.destroy();
-            const ctx = document.getElementById('salesChart').getContext('2d');
-            salesChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Продажи, ₽',
-                        data: data,
-                        borderColor: '#b829ff',
-                        backgroundColor: 'rgba(184,41,255,0.1)',
-                        tension: 0.1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
         }
 
         // ========== ЛОГИ ==========
         async function loadLogs() {
-            // Предполагаем, что есть эндпоинт /admin/logs
             try {
                 const res = await fetch('/admin/logs', { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) {
@@ -1061,7 +1011,7 @@ async function uploadImages(files) {
                 }
                 container.innerHTML = logs.map(log => `
                     <div class="log-entry">
-                        <strong>${new Date(log.timestamp).toLocaleString()}</strong> - ${log.admin} - ${log.action}
+                        <strong>${new Date(log.timestamp).toLocaleString()}</strong> - ${log.action}
                     </div>
                 `).join('');
             } catch (e) {
@@ -1071,7 +1021,6 @@ async function uploadImages(files) {
 
         // ========== НАСТРОЙКИ ==========
         async function loadSettings() {
-            // Предполагаем эндпоинт /admin/settings
             try {
                 const res = await fetch('/admin/settings', { headers: { 'Authorization': `Bearer ${token}` } });
                 if (res.ok) {
@@ -1080,9 +1029,7 @@ async function uploadImages(files) {
                     document.getElementById('settings-phone').value = settings.phone || '';
                     document.getElementById('settings-email').value = settings.email || '';
                 }
-            } catch (e) {
-                // игнорируем
-            }
+            } catch (e) {}
         }
 
         async function saveSettings() {
@@ -1144,4 +1091,4 @@ async function uploadImages(files) {
         }
     </script>
 </body>
-</html> 
+</html>
