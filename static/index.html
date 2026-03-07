@@ -40,7 +40,7 @@
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background-image: url('images/fon.jpg');
+            background-image: url('/static/images/fon.jpg');
             background-size: cover;
             background-position: center;
             opacity: 0.15;
@@ -60,14 +60,14 @@
 
         .header {
             display: flex;
-            justify-content: center; /* центрируем лого */
+            justify-content: center;
             margin-bottom: 24px;
         }
 
         .logo img {
-            max-width: 100%; /* растягиваем на всю ширину */
+            max-width: 100%;
             height: auto;
-            max-height: 80px; /* ограничим высоту */
+            max-height: 80px;
             border-radius: 12px;
             box-shadow: 0 0 10px #b829ff, 0 0 20px #b829ff, 0 0 30px #b829ff;
             animation: neonPulse 2s infinite ease-in-out;
@@ -79,7 +79,6 @@
             100% { box-shadow: 0 0 5px #b829ff, 0 0 10px #b829ff, 0 0 15px #b829ff; }
         }
 
-        /* Анимации кнопок (без прыжков) */
         .btn-add, .btn-fav, .hotbar-btn, .pill, .cat-btn, .spin-btn-modern, .promo-btn-modern, .order-btn-modern, .close-btn, .remove-fav {
             transition: background 0.2s, filter 0.2s, box-shadow 0.2s;
         }
@@ -156,10 +155,10 @@
             transform: translateY(-3px);
         }
 
-        .cat-btn[data-cat="clothes"] { background-image: url('images/cat_odezhda.jpg'); }
-        .cat-btn[data-cat="accessories"] { background-image: url('images/cat_aksessuary.jpg'); }
-        .cat-btn[data-cat="vape"] { background-image: url('images/cat_vape.jpg'); }
-        .cat-btn[data-cat="electronics"] { background-image: url('images/cat_elektronika.jpg'); }
+        .cat-btn[data-cat="clothes"] { background-image: url('/static/images/cat_odezhda.jpg'); }
+        .cat-btn[data-cat="accessories"] { background-image: url('/static/images/cat_aksessuary.jpg'); }
+        .cat-btn[data-cat="vape"] { background-image: url('/static/images/cat_vape.jpg'); }
+        .cat-btn[data-cat="electronics"] { background-image: url('/static/images/cat_elektronika.jpg'); }
 
         .pills-container {
             display: flex;
@@ -214,8 +213,6 @@
         }
 
         .product-card:active { transform: scale(0.97); transition: transform 0.1s; }
-
-      
 
         .product-img img {
             width: 100%;
@@ -311,7 +308,6 @@
             flex-shrink: 0;
         }
 
-        /* Хотбар с иконками JPG */
         .hotbar {
             position: fixed;
             bottom: 0;
@@ -373,7 +369,6 @@
             border: 1px solid var(--bg-color);
         }
 
-        /* Модалки */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -638,81 +633,79 @@
             box-shadow: 0 5px 15px rgba(184, 41, 255, 0.4);
         }
 
-
         .product-carousel {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 1/1;
-    background: #1a0a24;
-    overflow: hidden;
-}
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1/1;
+            background: #1a0a24;
+            overflow: hidden;
+        }
 
-.carousel-images {
-    width: 100%;
-    height: 100%;
-    position: relative;
-}
+        .carousel-images {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
 
-.carousel-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain; /* чтобы фото не обрезалось */
-    background: #1a0a24;
-    position: absolute;
-    top: 0;
-    left: 0;
-    transition: opacity 0.3s;
-}
+        .carousel-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #1a0a24;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: opacity 0.3s;
+        }
 
-.carousel-indicators {
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 6px;
-    z-index: 2;
-}
+        .carousel-indicators {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 2;
+        }
 
-.carousel-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.5);
-    cursor: pointer;
-    transition: background 0.2s;
-}
+        .carousel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.5);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
 
-.carousel-dot.active {
-    background: var(--primary);
-    box-shadow: 0 0 10px var(--primary);
-}
+        .carousel-dot.active {
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+        }
 
-/* Стрелки в модалке */
-.modal-prev, .modal-next {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(0,0,0,0.5);
-    color: white;
-    border: none;
-    font-size: 32px;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 10;
-    transition: background 0.2s;
-}
-.modal-prev { left: 10px; }
-.modal-next { right: 10px; }
-.modal-prev:hover, .modal-next:hover {
-    background: rgba(0,0,0,0.8);
-}
-        
+        .modal-prev, .modal-next {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            font-size: 32px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+        .modal-prev { left: 10px; }
+        .modal-next { right: 10px; }
+        .modal-prev:hover, .modal-next:hover {
+            background: rgba(0,0,0,0.8);
+        }
+
         .prize-result {
             margin-top: 20px;
             font-size: 18px;
@@ -743,7 +736,7 @@
     <div class="app">
         <div class="header">
             <div class="logo">
-                <img src="images/logo.jpg" alt="Bau28">
+                <img src="/static/images/logo.jpg" alt="Bau28">
             </div>
         </div>
 
@@ -842,49 +835,48 @@
         </div>
     </div>
 
-  
-   <!-- Модалка детального просмотра товара -->
-<div class="modal-overlay" id="productModal">
-    <div class="bottom-sheet" onclick="event.stopPropagation()">
-        <div class="sheet-handle"></div>
-        <div class="sheet-header">
-            <span id="modalProductTitle">Товар</span>
-            <button class="close-btn" id="closeProductBtn">✕</button>
-        </div>
-        <div class="sheet-body" style="position: relative;">
-            <!-- Контейнер для изображения и стрелок -->
-            <div style="position: relative; width: 100%; margin-bottom: 15px;">
-                <img id="modalProductImage" src="" style="width: 100%; border-radius: 20px; max-height: 250px; object-fit: contain; background: #1a0a24; cursor: pointer;">
-                <!-- Кнопки навигации (видны только если есть несколько фото) -->
-                <button class="modal-prev" id="modalPrev" style="display: none;">←</button>
-                <button class="modal-next" id="modalNext" style="display: none;">→</button>
+    <!-- Модалка детального просмотра товара -->
+    <div class="modal-overlay" id="productModal">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <span id="modalProductTitle">Товар</span>
+                <button class="close-btn" id="closeProductBtn">✕</button>
             </div>
-            <!-- Описание и цена -->
-            <p id="modalProductDescription" style="margin: 15px 0; color: var(--text-muted); text-align: left;"></p>
-            <div style="font-size: 24px; font-weight: 800; color: #dbb6ff;" id="modalProductPrice"></div>
-            <button class="btn-add" style="width: 100%; margin-top: 20px;" id="modalAddToCart">В корзину</button>
+            <div class="sheet-body" style="position: relative;">
+                <!-- Контейнер для изображения и стрелок -->
+                <div style="position: relative; width: 100%; margin-bottom: 15px;">
+                    <img id="modalProductImage" src="" style="width: 100%; border-radius: 20px; max-height: 250px; object-fit: contain; background: #1a0a24; cursor: pointer;">
+                    <!-- Кнопки навигации (видны только если есть несколько фото) -->
+                    <button class="modal-prev" id="modalPrev" style="display: none;">←</button>
+                    <button class="modal-next" id="modalNext" style="display: none;">→</button>
+                </div>
+                <!-- Описание и цена -->
+                <p id="modalProductDescription" style="margin: 15px 0; color: var(--text-muted); text-align: left;"></p>
+                <div style="font-size: 24px; font-weight: 800; color: #dbb6ff;" id="modalProductPrice"></div>
+                <button class="btn-add" style="width: 100%; margin-top: 20px;" id="modalAddToCart">В корзину</button>
+            </div>
         </div>
     </div>
-</div>
 
     <!-- Нижний хот-бар с JPG иконками -->
     <div class="hotbar" id="hotbar">
         <button class="hotbar-btn" id="hotbarCart">
-            <img src="images/cart.png" class="hotbar-icon-img" alt="Корзина">
+            <img src="/static/images/cart.png" class="hotbar-icon-img" alt="Корзина">
             <span class="hotbar-label">Корзина</span>
             <span class="hotbar-badge" id="hotbarCartBadge">0</span>
         </button>
         <button class="hotbar-btn" id="hotbarFav">
-            <img src="images/fav.png" class="hotbar-icon-img" alt="Избранное">
+            <img src="/static/images/fav.png" class="hotbar-icon-img" alt="Избранное">
             <span class="hotbar-label">Избранное</span>
             <span class="hotbar-badge" id="hotbarFavBadge">0</span>
         </button>
         <button class="hotbar-btn" id="hotbarWheel">
-            <img src="images/wheel.png" class="hotbar-icon-img" alt="Колесо">
+            <img src="/static/images/wheel.png" class="hotbar-icon-img" alt="Колесо">
             <span class="hotbar-label">Колесо</span>
         </button>
         <button class="hotbar-btn" id="hotbarHistory">
-            <img src="images/history.png" class="hotbar-icon-img" alt="История">
+            <img src="/static/images/history.png" class="hotbar-icon-img" alt="История">
             <span class="hotbar-label">История</span>
         </button>
     </div>
@@ -894,8 +886,8 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // ⚠️ ЗАМЕНИТЕ НА URL ВАШЕГО БОТА
-            const API_BASE_URL = 'https://bot-production-cf41.up.railway.app';
+            // API_BASE_URL теперь пустой (запросы на тот же домен)
+            const API_BASE_URL = '';
 
             // Глобальные переменные
             let products = {};
@@ -989,281 +981,233 @@
             }
 
             // Загрузка товаров
-           async function loadProducts() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/products`);
-        if (response.ok) {
-            products = await response.json();
-            // Преобразуем поля img в images, если нужно (для совместимости)
-            for (let cat in products) {
-                if (cat === 'vape') {
-                    for (let sub in products.vape) {
-                        products.vape[sub].forEach(p => {
-                            if (!p.images && p.img) {
-                                p.images = [p.img];
-                            } else if (!p.images) {
-                                p.images = ['images/tovary/default.jpg'];
+            async function loadProducts() {
+                try {
+                    const response = await fetch(`/api/products`);
+                    if (response.ok) {
+                        products = await response.json();
+                        // Преобразуем поля img в images, если нужно (для совместимости)
+                        for (let cat in products) {
+                            if (cat === 'vape') {
+                                for (let sub in products.vape) {
+                                    products.vape[sub].forEach(p => {
+                                        if (!p.images && p.img) {
+                                            p.images = [p.img];
+                                        } else if (!p.images) {
+                                            p.images = ['/static/images/tovary/default.jpg'];
+                                        }
+                                    });
+                                }
+                            } else {
+                                products[cat].forEach(p => {
+                                    if (!p.images && p.img) {
+                                        p.images = [p.img];
+                                    } else if (!p.images) {
+                                        p.images = ['/static/images/tovary/default.jpg'];
+                                    }
+                                });
                             }
-                        });
-                    }
-                } else {
-                    products[cat].forEach(p => {
-                        if (!p.images && p.img) {
-                            p.images = [p.img];
-                        } else if (!p.images) {
-                            p.images = ['images/tovary/default.jpg'];
                         }
+                    } else {
+                        console.error('Ошибка загрузки товаров, используем демо-данные');
+                        // Демо-данные с полем images (пути обновлены)
+                        products = {
+                            clothes: [
+                                { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['/static/images/tovary/futbolka.jpg'], discount: 0, isNew: true },
+                                { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['/static/images/tovary/hudi.jpg'], discount: 10, isNew: false },
+                                { id: 'c3', name: 'Карго штаны', description: 'Много карманов', price: 3790, images: ['/static/images/tovary/kargo.jpg'], discount: 0, isNew: false },
+                                { id: 'c4', name: 'Бейсболка', description: 'Кепка с козырьком', price: 1990, images: ['/static/images/tovary/bejsbolka.jpg'], discount: 5, isNew: true },
+                            ],
+                            accessories: [
+                                { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['/static/images/tovary/chasy.jpg'], discount: 0, isNew: false },
+                                { id: 'a2', name: 'Очки Aviator', description: 'Солнцезащитные', price: 2290, images: ['/static/images/tovary/ochki.jpg'], discount: 0, isNew: false },
+                            ],
+                            vape: {
+                                liquids: [
+                                    { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['/static/images/tovary/liquid1.jpg'], discount: 0, isNew: true },
+                                ],
+                                disposable: [
+                                    { id: 'v2', name: 'Elf Bar 600', description: 'Одноразка', price: 1290, images: ['/static/images/tovary/elfbar.jpg'], discount: 0, isNew: false },
+                                ],
+                            },
+                            electronics: [
+                                { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['/static/images/tovary/airpods.jpg'], discount: 0, isNew: true },
+                            ]
+                        };
+                    }
+                } catch (e) {
+                    console.error('Не удалось подключиться к серверу:', e);
+                    // Демо-данные при ошибке сети
+                    products = {
+                        clothes: [
+                            { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['/static/images/tovary/futbolka.jpg'], discount: 0, isNew: true },
+                            { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['/static/images/tovary/hudi.jpg'], discount: 10, isNew: false },
+                        ],
+                        accessories: [
+                            { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['/static/images/tovary/chasy.jpg'], discount: 0, isNew: false },
+                        ],
+                        vape: {
+                            liquids: [
+                                { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['/static/images/tovary/liquid1.jpg'], discount: 0, isNew: true },
+                            ],
+                        },
+                        electronics: [
+                            { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['/static/images/tovary/airpods.jpg'], discount: 0, isNew: true },
+                        ]
+                    };
+                }
+                renderProducts();
+                initCarousels(); // инициализация каруселей после отрисовки
+            }
+
+            // Отрисовка каталога
+            function renderProducts() {
+                let items = currentCat === 'vape' ? (products.vape?.[currentSub] || []) : (products[currentCat] || []);
+
+                // Применяем фильтры
+                if (currentFilter === 'sale') {
+                    items = items.filter(p => p.discount && p.discount > 0);
+                } else if (currentFilter === 'new') {
+                    items = items.filter(p => p.isNew === true);
+                } else if (currentFilter === 'priceAsc') {
+                    items = [...items].sort((a,b) => {
+                        const pa = a.discount ? Math.round(a.price * (1 - a.discount/100)) : a.price;
+                        const pb = b.discount ? Math.round(b.price * (1 - b.discount/100)) : b.price;
+                        return pa - pb;
+                    });
+                } else if (currentFilter === 'priceDesc') {
+                    items = [...items].sort((a,b) => {
+                        const pa = a.discount ? Math.round(a.price * (1 - a.discount/100)) : a.price;
+                        const pb = b.discount ? Math.round(b.price * (1 - b.discount/100)) : b.price;
+                        return pb - pa;
                     });
                 }
-            }
-        } else {
-            console.error('Ошибка загрузки товаров, используем демо-данные');
-            // Демо-данные с полем images
-            products = {
-                clothes: [
-                    { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['images/tovary/futbolka.jpg'], discount: 0, isNew: true },
-                    { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['images/tovary/hudi.jpg'], discount: 10, isNew: false },
-                    { id: 'c3', name: 'Карго штаны', description: 'Много карманов', price: 3790, images: ['images/tovary/kargo.jpg'], discount: 0, isNew: false },
-                    { id: 'c4', name: 'Бейсболка', description: 'Кепка с козырьком', price: 1990, images: ['images/tovary/bejsbolka.jpg'], discount: 5, isNew: true },
-                ],
-                accessories: [
-                    { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['images/tovary/chasy.jpg'], discount: 0, isNew: false },
-                    { id: 'a2', name: 'Очки Aviator', description: 'Солнцезащитные', price: 2290, images: ['images/tovary/ochki.jpg'], discount: 0, isNew: false },
-                ],
-                vape: {
-                    liquids: [
-                        { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['images/tovary/liquid1.jpg'], discount: 0, isNew: true },
-                    ],
-                    disposable: [
-                        { id: 'v2', name: 'Elf Bar 600', description: 'Одноразка', price: 1290, images: ['images/tovary/elfbar.jpg'], discount: 0, isNew: false },
-                    ],
-                },
-                electronics: [
-                    { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['images/tovary/airpods.jpg'], discount: 0, isNew: true },
-                ]
-            };
-        }
-    } catch (e) {
-        console.error('Не удалось подключиться к серверу:', e);
-        // Демо-данные при ошибке сети
-        products = {
-            clothes: [
-                { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['images/tovary/futbolka.jpg'], discount: 0, isNew: true },
-                { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['images/tovary/hudi.jpg'], discount: 10, isNew: false },
-            ],
-            accessories: [
-                { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['images/tovary/chasy.jpg'], discount: 0, isNew: false },
-            ],
-            vape: {
-                liquids: [
-                    { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['images/tovary/liquid1.jpg'], discount: 0, isNew: true },
-                ],
-            },
-            electronics: [
-                { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['images/tovary/airpods.jpg'], discount: 0, isNew: true },
-            ]
-        };
-    }
-    renderProducts();
-    initCarousels(); // инициализация каруселей после отрисовки
-}
-            // Отрисовка каталога
-           function renderProducts() {
-    let items = currentCat === 'vape' ? (products.vape?.[currentSub] || []) : (products[currentCat] || []);
 
-    // Применяем фильтры
-    if (currentFilter === 'sale') {
-        items = items.filter(p => p.discount && p.discount > 0);
-    } else if (currentFilter === 'new') {
-        items = items.filter(p => p.isNew === true);
-    } else if (currentFilter === 'priceAsc') {
-        items = [...items].sort((a,b) => {
-            const pa = a.discount ? Math.round(a.price * (1 - a.discount/100)) : a.price;
-            const pb = b.discount ? Math.round(b.price * (1 - b.discount/100)) : b.price;
-            return pa - pb;
-        });
-    } else if (currentFilter === 'priceDesc') {
-        items = [...items].sort((a,b) => {
-            const pa = a.discount ? Math.round(a.price * (1 - a.discount/100)) : a.price;
-            const pb = b.discount ? Math.round(b.price * (1 - b.discount/100)) : b.price;
-            return pb - pa;
-        });
-    }
-
-    if (items.length === 0) {
-        productsGrid.innerHTML = '<div style="grid-column: span 2; text-align:center; color:var(--text-muted); padding:40px;">Товары не найдены</div>';
-        return;
-    }
-
-    productsGrid.innerHTML = items.map(p => {
-        const finalPrice = p.discount ? Math.round(p.price * (1 - p.discount/100)) : p.price;
-        const isFav = favorites.includes(p.id);
-        const images = p.images && p.images.length ? p.images : [p.img || 'images/tovary/default.jpg'];
-
-        let carouselImages = '';
-        let carouselIndicators = '';
-        images.forEach((img, idx) => {
-            carouselImages += `<img src="${img}" class="carousel-img" data-index="${idx}" style="display: ${idx === 0 ? 'block' : 'none'};" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:40px;\\'>📦</div>';">`;
-            if (images.length > 1) {
-                carouselIndicators += `<span class="carousel-dot ${idx === 0 ? 'active' : ''}" data-index="${idx}"></span>`;
-            }
-        });
-
-        return `
-            <div class="product-card" data-id="${p.id}">
-                <div class="product-carousel" data-product-id="${p.id}">
-                    <div class="carousel-images">
-                        ${carouselImages}
-                    </div>
-                    ${images.length > 1 ? `<div class="carousel-indicators">${carouselIndicators}</div>` : ''}
-                </div>
-                <div class="product-info">
-                    <div class="product-title">${p.name}</div>
-                    <div class="product-description">${p.description || ''}</div>
-                    <div class="product-price">
-                        ${p.discount ? `<span class="old-price">${formatPrice(p.price)}</span>` : ''}
-                        ${formatPrice(finalPrice)}
-                    </div>
-                    <div class="product-actions">
-                        <button class="btn-add" data-id="${p.id}">В корзину</button>
-                        <button class="btn-fav" data-id="${p.id}">${isFav ? '❤️' : '🤍'}</button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Добавляем обработчики на карточки и кнопки
-    document.querySelectorAll('.product-card').forEach(card => {
-        card.addEventListener('click', (e) => {
-            if (!e.target.closest('button')) {
-                const id = card.dataset.id;
-                const product = findProduct(id);
-                if (product) {
-                    openProductModal(product);
-                    addHistory('Просмотр', product.name, product.id);
+                if (items.length === 0) {
+                    productsGrid.innerHTML = '<div style="grid-column: span 2; text-align:center; color:var(--text-muted); padding:40px;">Товары не найдены</div>';
+                    return;
                 }
-            }
-        });
-    });
-    document.querySelectorAll('.btn-add[data-id]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const id = btn.dataset.id;
-            const p = findProduct(id);
-            if (p) {
-                addToCart(p);
-                addHistory('Добавление в корзину', p.name, p.id);
-            }
-        });
-    });
-    document.querySelectorAll('.btn-fav[data-id]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const id = btn.dataset.id;
-            const p = findProduct(id);
-            if (p) {
-                const wasFav = favorites.includes(id);
-                toggleFavorite(p);
-                btn.textContent = favorites.includes(id) ? '❤️' : '🤍';
-                addHistory(wasFav ? 'Удаление из избранного' : 'Добавление в избранное', p.name, p.id);
-            }
-        });
-    });
 
-    // Инициализируем карусели после добавления HTML
-    initCarousels();
-}
+                productsGrid.innerHTML = items.map(p => {
+                    const finalPrice = p.discount ? Math.round(p.price * (1 - p.discount/100)) : p.price;
+                    const isFav = favorites.includes(p.id);
+                    const images = p.images && p.images.length ? p.images : [p.img || '/static/images/tovary/default.jpg'];
+
+                    let carouselImages = '';
+                    let carouselIndicators = '';
+                    images.forEach((img, idx) => {
+                        carouselImages += `<img src="${img}" class="carousel-img" data-index="${idx}" style="display: ${idx === 0 ? 'block' : 'none'};" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:40px;\\'>📦</div>';">`;
+                        if (images.length > 1) {
+                            carouselIndicators += `<span class="carousel-dot ${idx === 0 ? 'active' : ''}" data-index="${idx}"></span>`;
+                        }
+                    });
+
+                    return `
+                        <div class="product-card" data-id="${p.id}">
+                            <div class="product-carousel" data-product-id="${p.id}">
+                                <div class="carousel-images">
+                                    ${carouselImages}
+                                </div>
+                                ${images.length > 1 ? `<div class="carousel-indicators">${carouselIndicators}</div>` : ''}
+                            </div>
+                            <div class="product-info">
+                                <div class="product-title">${p.name}</div>
+                                <div class="product-description">${p.description || ''}</div>
+                                <div class="product-price">
+                                    ${p.discount ? `<span class="old-price">${formatPrice(p.price)}</span>` : ''}
+                                    ${formatPrice(finalPrice)}
+                                </div>
+                                <div class="product-actions">
+                                    <button class="btn-add" data-id="${p.id}">В корзину</button>
+                                    <button class="btn-fav" data-id="${p.id}">${isFav ? '❤️' : '🤍'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Добавляем обработчики на карточки и кнопки
+                document.querySelectorAll('.product-card').forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        if (!e.target.closest('button')) {
+                            const id = card.dataset.id;
+                            const product = findProduct(id);
+                            if (product) {
+                                openProductModal(product);
+                                addHistory('Просмотр', product.name, product.id);
+                            }
+                        }
+                    });
+                });
+                document.querySelectorAll('.btn-add[data-id]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = btn.dataset.id;
+                        const p = findProduct(id);
+                        if (p) {
+                            addToCart(p);
+                            addHistory('Добавление в корзину', p.name, p.id);
+                        }
+                    });
+                });
+                document.querySelectorAll('.btn-fav[data-id]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = btn.dataset.id;
+                        const p = findProduct(id);
+                        if (p) {
+                            const wasFav = favorites.includes(id);
+                            toggleFavorite(p);
+                            btn.textContent = favorites.includes(id) ? '❤️' : '🤍';
+                            addHistory(wasFav ? 'Удаление из избранного' : 'Добавление в избранное', p.name, p.id);
+                        }
+                    });
+                });
+
+                // Инициализируем карусели после добавления HTML
+                initCarousels();
+            }
 
             function openProductModal(product) {
                 currentProduct = product;
+                currentProductImageIndex = 0;
                 modalProductTitle.textContent = product.name;
-                // Используем первое изображение
-                const imgSrc = product.images && product.images.length > 0 ? product.images[0] : 'images/tovary/default.jpg';
-                modalProductImage.src = imgSrc;
                 modalProductDescription.textContent = product.description || 'Описание отсутствует';
                 const finalPrice = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                 modalProductPrice.innerHTML = product.discount ? `<span class="old-price">${formatPrice(product.price)}</span> ${formatPrice(finalPrice)}` : formatPrice(finalPrice);
+                updateModalImage();
                 productModal.classList.add('active');
             }
 
-            // Увеличение фото при клике
-            modalProductImage.addEventListener('click', () => {
-                const fullscreenDiv = document.createElement('div');
-                fullscreenDiv.style.position = 'fixed';
-                fullscreenDiv.style.top = '0';
-                fullscreenDiv.style.left = '0';
-                fullscreenDiv.style.width = '100%';
-                fullscreenDiv.style.height = '100%';
-                fullscreenDiv.style.background = 'rgba(0,0,0,0.9)';
-                fullscreenDiv.style.display = 'flex';
-                fullscreenDiv.style.alignItems = 'center';
-                fullscreenDiv.style.justifyContent = 'center';
-                fullscreenDiv.style.zIndex = '10001';
-                const img = document.createElement('img');
-                img.src = modalProductImage.src;
-                img.style.maxWidth = '90%';
-                img.style.maxHeight = '90%';
-                img.style.objectFit = 'contain';
-                fullscreenDiv.appendChild(img);
-                fullscreenDiv.addEventListener('click', () => fullscreenDiv.remove());
-                document.body.appendChild(fullscreenDiv);
-            });
-
-            modalAddToCart.addEventListener('click', () => {
-                if (currentProduct) {
-                    addToCart(currentProduct);
-                    addHistory('Добавление в корзину', currentProduct.name, currentProduct.id);
-                    productModal.classList.remove('active');
+            function updateModalImage() {
+                if (!currentProduct) return;
+                const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
+                if (images.length === 0) return;
+                modalProductImage.src = images[currentProductImageIndex];
+                const modalPrev = document.getElementById('modalPrev');
+                const modalNext = document.getElementById('modalNext');
+                if (images.length <= 1) {
+                    if (modalPrev) modalPrev.style.display = 'none';
+                    if (modalNext) modalNext.style.display = 'none';
+                } else {
+                    if (modalPrev) modalPrev.style.display = 'flex';
+                    if (modalNext) modalNext.style.display = 'flex';
                 }
+            }
+
+            // Обработчики стрелок
+            document.getElementById('modalPrev').addEventListener('click', () => {
+                const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
+                currentProductImageIndex = (currentProductImageIndex - 1 + images.length) % images.length;
+                updateModalImage();
             });
 
-            closeProductBtn.addEventListener('click', () => productModal.classList.remove('active'));
-            productModal.addEventListener('click', (e) => {
-                if (e.target === productModal) productModal.classList.remove('active');
+            document.getElementById('modalNext').addEventListener('click', () => {
+                const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
+                currentProductImageIndex = (currentProductImageIndex + 1) % images.length;
+                updateModalImage();
             });
-let currentProductImageIndex = 0;
 
-function openProductModal(product) {
-    currentProduct = product;
-    currentProductImageIndex = 0;
-    modalProductTitle.textContent = product.name;
-    modalProductDescription.textContent = product.description || 'Описание отсутствует';
-    const finalPrice = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
-    modalProductPrice.innerHTML = product.discount ? `<span class="old-price">${formatPrice(product.price)}</span> ${formatPrice(finalPrice)}` : formatPrice(finalPrice);
-    updateModalImage();
-    productModal.classList.add('active');
-}
-
-function updateModalImage() {
-    if (!currentProduct) return;
-    const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || 'images/tovary/default.jpg'];
-    if (images.length === 0) return;
-    modalProductImage.src = images[currentProductImageIndex];
-    // Показываем/скрываем стрелки в зависимости от количества фото
-    const modalPrev = document.getElementById('modalPrev');
-    const modalNext = document.getElementById('modalNext');
-    if (images.length <= 1) {
-        if (modalPrev) modalPrev.style.display = 'none';
-        if (modalNext) modalNext.style.display = 'none';
-    } else {
-        if (modalPrev) modalPrev.style.display = 'flex';
-        if (modalNext) modalNext.style.display = 'flex';
-    }
-}
-
-// Обработчики стрелок
-document.getElementById('modalPrev').addEventListener('click', () => {
-    const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || 'images/tovary/default.jpg'];
-    currentProductImageIndex = (currentProductImageIndex - 1 + images.length) % images.length;
-    updateModalImage();
-});
-
-document.getElementById('modalNext').addEventListener('click', () => {
-    const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || 'images/tovary/default.jpg'];
-    currentProductImageIndex = (currentProductImageIndex + 1) % images.length;
-    updateModalImage();
-});
             // Корзина
             window.changeQty = function(id, delta) {
                 const item = cart.find(i => i.id === id);
@@ -1359,7 +1303,7 @@ document.getElementById('modalNext').addEventListener('click', () => {
                 }
                 promoMessage.textContent = 'Проверка...';
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/check_promo`, {
+                    const response = await fetch(`/api/check_promo`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code })
@@ -1393,7 +1337,7 @@ document.getElementById('modalNext').addEventListener('click', () => {
             // Колесо фортуны
             async function fetchWheelPrizes() {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/wheel/prizes`);
+                    const response = await fetch(`/api/wheel/prizes`);
                     if (response.ok) {
                         wheelPrizes = await response.json();
                     }
@@ -1409,7 +1353,7 @@ document.getElementById('modalNext').addEventListener('click', () => {
                     return;
                 }
                 try {
-                    const resp = await fetch(`${API_BASE_URL}/api/check_promo`, {
+                    const resp = await fetch(`/api/check_promo`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code })
@@ -1617,6 +1561,17 @@ document.getElementById('modalNext').addEventListener('click', () => {
                     } catch (error) {
                         console.error('Не удалось отправить заказ на сервер:', error);
                     }
+                } else {
+                    // Если API_BASE_URL пуст, отправляем на относительный путь
+                    try {
+                        await fetch(`/api/order`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(orderData)
+                        });
+                    } catch (error) {
+                        console.error('Не удалось отправить заказ на сервер:', error);
+                    }
                 }
 
                 addHistory('Оформление заказа', `Сумма: ${formatPrice(total)}`);
@@ -1731,59 +1686,59 @@ document.getElementById('modalNext').addEventListener('click', () => {
             });
 
             function initCarousels() {
-    document.querySelectorAll('.product-carousel').forEach(carousel => {
-        let startX = 0;
-        let currentIndex = 0;
-        const images = carousel.querySelectorAll('.carousel-img');
-        const dots = carousel.querySelectorAll('.carousel-dot');
-        
-        if (images.length === 0) return;
+                document.querySelectorAll('.product-carousel').forEach(carousel => {
+                    let startX = 0;
+                    let currentIndex = 0;
+                    const images = carousel.querySelectorAll('.carousel-img');
+                    const dots = carousel.querySelectorAll('.carousel-dot');
+                    
+                    if (images.length === 0) return;
 
-        const showImage = (index) => {
-            if (index < 0) index = images.length - 1;
-            if (index >= images.length) index = 0;
-            currentIndex = index;
-            images.forEach((img, i) => {
-                img.style.display = i === currentIndex ? 'block' : 'none';
-            });
-            dots.forEach((dot, i) => {
-                dot.classList.toggle('active', i === currentIndex);
-            });
-        };
+                    const showImage = (index) => {
+                        if (index < 0) index = images.length - 1;
+                        if (index >= images.length) index = 0;
+                        currentIndex = index;
+                        images.forEach((img, i) => {
+                            img.style.display = i === currentIndex ? 'block' : 'none';
+                        });
+                        dots.forEach((dot, i) => {
+                            dot.classList.toggle('active', i === currentIndex);
+                        });
+                    };
 
-        // Обработка свайпов
-        carousel.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-        }, { passive: true });
+                    // Обработка свайпов
+                    carousel.addEventListener('touchstart', (e) => {
+                        startX = e.touches[0].clientX;
+                    }, { passive: true });
 
-        carousel.addEventListener('touchend', (e) => {
-            if (!startX) return;
-            const endX = e.changedTouches[0].clientX;
-            const diff = endX - startX;
-            if (Math.abs(diff) > 30) {
-                if (diff > 0) {
-                    showImage(currentIndex - 1); // свайп вправо – предыдущее
-                } else {
-                    showImage(currentIndex + 1); // свайп влево – следующее
-                }
+                    carousel.addEventListener('touchend', (e) => {
+                        if (!startX) return;
+                        const endX = e.changedTouches[0].clientX;
+                        const diff = endX - startX;
+                        if (Math.abs(diff) > 30) {
+                            if (diff > 0) {
+                                showImage(currentIndex - 1); // свайп вправо – предыдущее
+                            } else {
+                                showImage(currentIndex + 1); // свайп влево – следующее
+                            }
+                        }
+                        startX = 0;
+                    }, { passive: true });
+
+                    // Обработка кликов по точкам
+                    dots.forEach(dot => {
+                        dot.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const index = parseInt(dot.dataset.index);
+                            showImage(index);
+                        });
+                    });
+
+                    // Сохраняем текущий индекс для возможного использования
+                    carousel.dataset.currentIndex = 0;
+                });
             }
-            startX = 0;
-        }, { passive: true });
 
-        // Обработка кликов по точкам
-        dots.forEach(dot => {
-            dot.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(dot.dataset.index);
-                showImage(index);
-            });
-        });
-
-        // Сохраняем текущий индекс для возможного использования
-        carousel.dataset.currentIndex = 0;
-    });
-}
-            
             // Инициализация
             (async () => {
                 await loadProducts();
@@ -1800,7 +1755,3 @@ document.getElementById('modalNext').addEventListener('click', () => {
     </script>
 </body>
 </html>
-
-
-
-
