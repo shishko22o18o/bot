@@ -465,7 +465,7 @@ async def get_wheel_prizes():
 @app.get("/admin", response_class=HTMLResponse)
 async def get_admin_page():
     try:
-        with open("static/index.html", "r", encoding="utf-8") as f:
+        with open("static/admin.html", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return HTMLResponse(content="Файл админ-панели не найден. Создайте static/admin.html", status_code=404)
@@ -483,3 +483,4 @@ async def get_store():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
