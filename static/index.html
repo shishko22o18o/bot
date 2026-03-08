@@ -643,7 +643,6 @@
         }
         .notification.show { top: 30px; }
 
-        /* Стили для колеса фортуны */
         .wheel-container {
             text-align: center;
             margin: 20px 0;
@@ -666,7 +665,7 @@
             border-radius: 50%;
             box-shadow: 0 0 30px rgba(184, 41, 255, 0.4), inset 0 0 20px rgba(0,0,0,0.5);
             transition: transform 3s cubic-bezier(0.2, 0.8, 0.3, 1);
-            background: #1a1122; /* fallback */
+            background: #1a1122;
         }
         
         .wheel-pointer {
@@ -779,7 +778,7 @@
         </div>
     </div>
 
-    <!-- Модалка колеса фортуны (улучшенная) -->
+    <!-- Модалка колеса фортуны -->
     <div class="modal-overlay" id="wheelModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -813,7 +812,7 @@
         </div>
     </div>
 
-    <!-- Модалка детального просмотра товара (исправлены кнопки) -->
+    <!-- Модалка детального просмотра товара -->
     <div class="modal-overlay" id="productModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -834,7 +833,6 @@
         </div>
     </div>
 
-    <!-- Нижний хот-бар -->
     <div class="hotbar" id="hotbar">
         <button class="hotbar-btn" id="hotbarCart">
             <img src="/static/images/cart.png" class="hotbar-icon-img" alt="Корзина">
@@ -874,9 +872,16 @@
             let wheelDiscount = 0;
             let wheelPrizes = [];
             let currentProduct = null;
-            let currentProductImageIndex = 0; // глобально для навигации
+            let currentProductImageIndex = 0; // для навигации по фото
 
             let history = JSON.parse(localStorage.getItem('bau28_history') || '[]');
+
+            // ID пользователя Telegram
+            let telegramUserId = null;
+            const tg = window.Telegram?.WebApp;
+            if (tg) {
+                telegramUserId = tg.initDataUnsafe?.user?.id?.toString() || null;
+            }
 
             function addHistory(action, productName = '', productId = '') {
                 const entry = {
@@ -953,7 +958,6 @@
                 return null;
             }
 
-            // Загрузка товаров
             async function loadProducts() {
                 try {
                     const response = await fetch(`/api/products`);
@@ -1012,7 +1016,6 @@
                 };
             }
 
-            // Отрисовка каталога
             function renderProducts() {
                 let items = currentCat === 'vape' ? (products.vape?.[currentSub] || []) : (products[currentCat] || []);
 
@@ -1118,16 +1121,14 @@
                 initCarousels();
             }
 
-            // Модалка товара (исправлено)
             function openProductModal(product) {
                 currentProduct = product;
-                currentProductImageIndex = 0; // сброс индекса
+                currentProductImageIndex = 0;
                 modalProductTitle.textContent = product.name;
                 modalProductDescription.textContent = product.description || 'Описание отсутствует';
                 const finalPrice = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                 modalProductPrice.innerHTML = product.discount ? `<span class="old-price">${formatPrice(product.price)}</span> ${formatPrice(finalPrice)}` : formatPrice(finalPrice);
                 
-                // Обновляем обработчик кнопки "В корзину" (чтобы не дублировать)
                 const newBtn = modalAddToCart.cloneNode(true);
                 modalAddToCart.parentNode.replaceChild(newBtn, modalAddToCart);
                 newBtn.addEventListener('click', () => {
@@ -1135,7 +1136,7 @@
                     addHistory('Добавление в корзину (через карточку)', currentProduct.name, currentProduct.id);
                     productModal.classList.remove('active');
                 });
-                window.modalAddToCart = newBtn; // для доступа в других местах, если нужно
+                window.modalAddToCart = newBtn;
 
                 updateModalImage();
                 productModal.classList.add('active');
@@ -1157,7 +1158,6 @@
                 }
             }
 
-            // Обработчики стрелок (теперь работают, т.к. currentProductImageIndex глобальный)
             document.getElementById('modalPrev').addEventListener('click', () => {
                 if (!currentProduct) return;
                 const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
@@ -1172,7 +1172,6 @@
                 updateModalImage();
             });
 
-            // Корзина
             window.changeQty = function(id, delta) {
                 const item = cart.find(i => i.id === id);
                 if (item) {
@@ -1254,7 +1253,6 @@
                 updateCart();
             };
 
-            // Промокоды
             applyPromoBtn.addEventListener('click', async () => {
                 const code = promoInput.value.trim().toUpperCase();
                 if (!code) {
@@ -1274,7 +1272,7 @@
                             wheelPromoInput.value = code;
                             promoMessage.textContent = '✅ Промокод активирован! Теперь крутите колесо.';
                             wheelModal.classList.add('active');
-                            fetchWheelPrizes(); // загружаем призы и рисуем колесо
+                            fetchWheelPrizes();
                         } else {
                             appliedPromo = { 
                                 code, 
@@ -1295,13 +1293,13 @@
                 updateCart();
             });
 
-            // ========== КОЛЕСО ФОРТУНЫ (улучшенное) ==========
+            // Колесо фортуны
             async function fetchWheelPrizes() {
                 try {
                     const response = await fetch(`/api/wheel/prizes`);
                     if (response.ok) {
                         wheelPrizes = await response.json();
-                        drawWheel(); // отрисовываем колесо
+                        drawWheel();
                     } else {
                         console.warn('Не удалось загрузить призы колеса');
                     }
@@ -1315,12 +1313,11 @@
                 const ctx = wheelCanvas.getContext('2d');
                 const width = 250, height = 250;
                 const centerX = width/2, centerY = height/2;
-                const radius = 110; // чуть меньше, чтобы влезли сектора
+                const radius = 110;
                 
                 ctx.clearRect(0, 0, width, height);
                 
                 if (!wheelPrizes || wheelPrizes.length === 0) {
-                    // Если призов нет, рисуем заглушку
                     ctx.beginPath();
                     ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
                     ctx.fillStyle = '#333';
@@ -1336,18 +1333,14 @@
                     return;
                 }
 
-                // Вычисляем общий вес
                 const totalWeight = wheelPrizes.reduce((sum, p) => sum + (p.probability || 1), 0);
-                let startAngle = -Math.PI / 2; // начинаем с верхней точки (12 часов)
-
-                // Цвета для секторов
+                let startAngle = -Math.PI / 2;
                 const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFE194', '#B83B5E', '#6A2C70', '#F08A5D', '#B4A5A5', '#3F72AF'];
                 
                 wheelPrizes.forEach((prize, index) => {
                     const angle = (prize.probability || 1) / totalWeight * 2 * Math.PI;
                     const endAngle = startAngle + angle;
                     
-                    // Рисуем сектор
                     ctx.beginPath();
                     ctx.moveTo(centerX, centerY);
                     ctx.arc(centerX, centerY, radius, startAngle, endAngle);
@@ -1358,7 +1351,6 @@
                     ctx.lineWidth = 1;
                     ctx.stroke();
 
-                    // Добавляем иконку или текст (опционально)
                     const midAngle = startAngle + angle / 2;
                     const textX = centerX + Math.cos(midAngle) * radius * 0.6;
                     const textY = centerY + Math.sin(midAngle) * radius * 0.6;
@@ -1371,7 +1363,6 @@
                     startAngle = endAngle;
                 });
 
-                // Рисуем центральный круг
                 ctx.beginPath();
                 ctx.arc(centerX, centerY, 20, 0, 2 * Math.PI);
                 ctx.fillStyle = '#1a1122';
@@ -1387,73 +1378,56 @@
                     wheelResultDiv.textContent = 'Сначала нужен промокод!';
                     return;
                 }
-                // Проверяем промокод
+                if (!telegramUserId) {
+                    wheelResultDiv.textContent = 'Ошибка: не удалось определить пользователя.';
+                    return;
+                }
+
                 try {
-                    const resp = await fetch(`/api/check_promo`, {
+                    const response = await fetch(`/api/wheel/spin`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code })
+                        body: JSON.stringify({ promo_code: code, user_id: telegramUserId })
                     });
-                    const data = await resp.json();
-                    if (!data.valid || data.type !== 'wheel') {
-                        wheelResultDiv.textContent = 'Промокод не подходит';
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        wheelResultDiv.textContent = errorData.detail || 'Ошибка сервера';
                         return;
                     }
-                } catch (e) {
-                    wheelResultDiv.textContent = 'Ошибка проверки';
-                    return;
-                }
 
-                if (wheelPrizes.length === 0) {
-                    wheelResultDiv.textContent = 'Призов сейчас нет :(';
-                    return;
-                }
+                    const data = await response.json();
+                    const prize = data.prize;
 
-                // Анимация вращения
-                const rotations = 5 + Math.random() * 3; // 5-8 оборотов
-                const degrees = rotations * 360 + Math.random() * 360;
-                wheelCanvas.style.transform = `rotate(${degrees}deg)`;
-
-                setTimeout(() => {
-                    // Определяем выигрышный сектор
-                    const totalWeight = wheelPrizes.reduce((s, p) => s + (p.probability || 1), 0);
-                    let rand = Math.random() * totalWeight;
-                    let selected = null;
-                    for (let p of wheelPrizes) {
-                        if (rand < (p.probability || 1)) {
-                            selected = p;
-                            break;
-                        }
-                        rand -= (p.probability || 1);
-                    }
-                    if (!selected) selected = wheelPrizes[0];
-
-                    // Применяем скидку
-                    if (selected.type === 'percent') {
+                    if (prize.type === 'percent') {
                         const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-                        wheelDiscount = Math.round(subtotal * selected.value / 100);
-                    } else if (selected.type === 'fixed') {
-                        wheelDiscount = selected.value;
+                        wheelDiscount = Math.round(subtotal * prize.value / 100);
+                    } else if (prize.type === 'fixed') {
+                        wheelDiscount = prize.value;
                     } else {
                         wheelDiscount = 0;
                     }
 
-                    wheelResultDiv.innerHTML = `🎉 Ваш приз: ${selected.icon || '🎁'} ${selected.description}!`;
-                    addHistory('Колесо фортуны', selected.description);
-                    updateCart();
+                    const rotations = 5 + Math.random() * 3;
+                    const degrees = rotations * 360 + Math.random() * 360;
+                    wheelCanvas.style.transform = `rotate(${degrees}deg)`;
 
-                    // Сбрасываем поворот для следующего раза (но можно оставить как есть)
-                    // wheelCanvas.style.transform = 'rotate(0deg)'; // если нужно вернуть
-                }, 3000);
+                    setTimeout(() => {
+                        wheelResultDiv.innerHTML = `🎉 Ваш приз: ${prize.icon || '🎁'} ${prize.description}!`;
+                        addHistory('Колесо фортуны', prize.description);
+                        updateCart();
+                    }, 3000);
+
+                } catch (e) {
+                    wheelResultDiv.textContent = 'Ошибка соединения';
+                }
             });
 
-            // При открытии модалки колеса загружаем призы и рисуем
             hotbarWheel.addEventListener('click', () => {
                 wheelModal.classList.add('active');
                 fetchWheelPrizes();
             });
 
-            // Избранное
             function toggleFavorite(product) {
                 const id = product.id;
                 const index = favorites.indexOf(id);
@@ -1532,7 +1506,6 @@
                 });
             }
 
-            // История
             function renderHistoryItems() {
                 const container = document.getElementById('historyItems');
                 if (!container) return;
@@ -1551,7 +1524,6 @@
                 `).join('');
             }
 
-            // Отправка заказа
             orderBtn.addEventListener('click', async () => {
                 if (cart.length === 0) return;
 
@@ -1601,7 +1573,6 @@
                 showNotification('🚀 Заказ отправлен!');
             });
 
-            // Модалки через хотбар
             hotbarCart.addEventListener('click', () => {
                 renderCartItems();
                 cartModal.classList.add('active');
@@ -1617,14 +1588,12 @@
                 historyModal.classList.add('active');
             });
 
-            // Закрытие модалок
             closeCartBtn.addEventListener('click', () => cartModal.classList.remove('active'));
             closeFavBtn.addEventListener('click', () => favModal.classList.remove('active'));
             closeWheelBtn.addEventListener('click', () => wheelModal.classList.remove('active'));
             closeHistoryBtn.addEventListener('click', () => historyModal.classList.remove('active'));
             closeProductBtn.addEventListener('click', () => productModal.classList.remove('active'));
 
-            // Закрытие свайпом вниз
             const sheets = [cartModal, favModal, wheelModal, productModal, historyModal];
             sheets.forEach(modal => {
                 if (!modal) return;
@@ -1653,7 +1622,6 @@
                 });
             });
 
-            // Закрытие по клику на оверлей
             sheets.forEach(modal => {
                 if (!modal) return;
                 modal.addEventListener('click', (e) => {
@@ -1661,7 +1629,6 @@
                 });
             });
 
-            // Категории
             document.querySelectorAll('.cat-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
@@ -1750,7 +1717,6 @@
                 });
             }
 
-            // Инициализация
             (async () => {
                 await loadProducts();
                 updateCart();
