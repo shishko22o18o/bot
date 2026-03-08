@@ -4,6 +4,7 @@ import logging
 import uuid
 import os
 import csv
+import random
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
@@ -105,6 +106,7 @@ blocked_users_col = db["blocked_users"]
 wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
+wheel_usage_col = db["wheel_usage"]  # Новая коллекция
 
 async def init_mongodb():
     try:
@@ -126,6 +128,7 @@ async def init_mongodb():
     await wheel_prizes_col.create_index("id", unique=True)
     await admin_logs_col.create_index([("timestamp", -1)])
     await settings_col.create_index("key", unique=True)
+    await wheel_usage_col.create_index([("user_id", 1), ("promo_code", 1)], unique=True)
 
     logger.info("MongoDB инициализирована.")
 
@@ -301,7 +304,6 @@ class WheelPrize(StatesGroup):
     probability = State()
 
 # ==================== ХЭНДЛЕРЫ БОТА ====================
-
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     admin = is_admin(message.from_user.id)
@@ -1538,9 +1540,9 @@ async def get_products():
         full_image_urls = []
         for img in images:
             if img.startswith('http'):
-                full_image_urls.append(img)  # уже абсолютный URL
+                full_image_urls.append(img)
             else:
-                full_image_urls.append(f"{BASE_URL}{img}")  # добавляем BASE_URL
+                full_image_urls.append(f"{BASE_URL}{img}")
         product = {
             "id": doc['id'],
             "name": doc['name'],
@@ -1637,6 +1639,79 @@ async def get_wheel_prizes():
             "probability": p.get('probability', 1)
         })
     return result
+
+# ==================== НОВЫЙ ЭНДПОИНТ ДЛЯ КОЛЕСА ====================
+class WheelSpinRequest(BaseModel):
+    promo_code: str
+    user_id: str
+
+@app.post("/api/wheel/spin")
+async def wheel_spin(request: WheelSpinRequest):
+    """
+    Проверяет, может ли пользователь крутить колесо по данному промокоду.
+    Если может – возвращает случайный приз и фиксирует использование.
+    """
+    promo_code = request.promo_code.strip().upper()
+    user_id = request.user_id.strip()
+
+    # Проверка промокода
+    promo = await promocodes_col.find_one({"code": promo_code})
+    if not promo:
+        raise HTTPException(status_code=400, detail="Промокод не найден")
+    if promo.get('type') != 'wheel':
+        raise HTTPException(status_code=400, detail="Этот промокод не для колеса")
+    now = datetime.now()
+    if promo.get('expires_at', now) < now:
+        raise HTTPException(status_code=400, detail="Срок действия истёк")
+    if promo.get('used_count', 0) >= promo.get('max_uses', 0):
+        raise HTTPException(status_code=400, detail="Промокод исчерпан")
+
+    # Проверка, не использовал ли уже этот пользователь данный промокод
+    usage = await wheel_usage_col.find_one({"user_id": user_id, "promo_code": promo_code})
+    if usage:
+        raise HTTPException(status_code=403, detail="Вы уже использовали этот промокод")
+
+    # Получаем призы
+    cursor = wheel_prizes_col.find({})
+    prizes = await cursor.to_list(length=100)
+    if not prizes:
+        raise HTTPException(status_code=404, detail="Нет доступных призов")
+
+    # Выбираем случайный приз с учётом веса
+    total_weight = sum(p.get('probability', 1) for p in prizes)
+    rand = random.uniform(0, total_weight)
+    cumulative = 0
+    selected = None
+    for p in prizes:
+        cumulative += p.get('probability', 1)
+        if rand <= cumulative:
+            selected = p
+            break
+    if not selected:
+        selected = prizes[0]
+
+    # Фиксируем использование
+    await wheel_usage_col.insert_one({
+        "user_id": user_id,
+        "promo_code": promo_code,
+        "prize_id": selected['id'],
+        "spun_at": datetime.now()
+    })
+
+    # Увеличиваем счётчик использований промокода
+    await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
+
+    # Возвращаем приз
+    return {
+        "success": True,
+        "prize": {
+            "id": selected['id'],
+            "description": selected['description'],
+            "icon": selected.get('icon', '🎁'),
+            "type": selected['type'],
+            "value": selected['value']
+        }
+    }
 
 # ==================== АДМИНСКИЕ API ====================
 class LoginRequest(BaseModel):
