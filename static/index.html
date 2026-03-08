@@ -39,7 +39,6 @@
             overflow-x: hidden;
         }
 
-        /* Улучшенный фон с легким градиентом поверх картинки */
         .bg-custom {
             position: fixed;
             top: 0; left: 0;
@@ -52,7 +51,6 @@
             pointer-events: none;
         }
 
-        /* Скрываем скролл, но оставляем функционал */
         ::-webkit-scrollbar { display: none; }
         
         .app {
@@ -60,7 +58,6 @@
             z-index: 10;
             max-width: 500px;
             margin: 0 auto;
-            /* Увеличен нижний отступ из-за плавающего хотбара */
             padding: 20px 16px 120px; 
         }
 
@@ -85,7 +82,6 @@
             100% { box-shadow: 0 0 20px var(--primary-glow), 0 0 40px rgba(184, 41, 255, 0.5); transform: scale(1.02); }
         }
 
-        /* Глобальные переходы для кнопок */
         .btn-add, .btn-fav, .hotbar-btn, .pill, .cat-btn, .spin-btn-modern, .promo-btn-modern, .order-btn-modern, .close-btn, .remove-fav {
             transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
@@ -217,13 +213,12 @@
             margin-top: 10px;
         }
 
-        /* Улучшенные карточки товаров (Glassmorphism 2.0) */
         .product-card {
             background: var(--surface);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--surface-border);
-            border-top: 1px solid rgba(255,255,255,0.1); /* Эффект света сверху */
+            border-top: 1px solid rgba(255,255,255,0.1);
             border-left: 1px solid rgba(255,255,255,0.05);
             border-radius: 28px;
             overflow: hidden;
@@ -311,7 +306,6 @@
             margin-top: auto;
         }
 
-        /* Анимированный градиент на кнопке добавления */
         @keyframes gradientShift {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
@@ -349,7 +343,6 @@
             background: rgba(255,255,255,0.1);
         }
 
-        /* Островок (Floating Hotbar) вместо прилипшего низа */
         .hotbar {
             position: fixed;
             bottom: 24px;
@@ -422,7 +415,6 @@
             box-shadow: 0 2px 5px rgba(255, 51, 102, 0.5);
         }
 
-        /* Улучшенные модальные окна */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -488,7 +480,6 @@
             padding-right: 5px;
         }
 
-        /* Элементы корзины и истории */
         .cart-item-modern {
             display: flex;
             justify-content: space-between;
@@ -583,7 +574,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* Улучшенная карусель */
         .product-carousel {
             position: relative;
             width: 100%;
@@ -633,7 +623,6 @@
             box-shadow: 0 0 8px #fff;
         }
 
-        /* Красивое уведомление */
         .notification {
             position: fixed;
             top: -80px; left: 50%;
@@ -654,19 +643,45 @@
         }
         .notification.show { top: 30px; }
 
-        /* Колесо фортуны */
-        .wheel-canvas {
-            border: 4px solid rgba(255,255,255,0.1);
+        /* Стили для колеса фортуны */
+        .wheel-container {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .wheel-wrapper {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            margin: 0 auto 20px;
+        }
+        
+        #wheelCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
             box-shadow: 0 0 30px rgba(184, 41, 255, 0.4), inset 0 0 20px rgba(0,0,0,0.5);
+            transition: transform 3s cubic-bezier(0.2, 0.8, 0.3, 1);
+            background: #1a1122; /* fallback */
         }
         
         .wheel-pointer {
+            width: 0; height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
             border-top: 40px solid var(--gold);
-            filter: drop-shadow(0 5px 10px rgba(255, 215, 0, 0.5));
+            position: absolute;
             top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            filter: drop-shadow(0 5px 10px rgba(255, 215, 0, 0.5));
         }
 
-        /* Кнопка рулетки */
         .spin-btn-modern {
             background: linear-gradient(135deg, var(--gold), #ffaa00);
             color: #000;
@@ -674,8 +689,21 @@
             border-radius: 30px;
             text-transform: uppercase;
             letter-spacing: 1px;
+            padding: 14px 30px;
+            border: none;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            max-width: 300px;
         }
-
+        
+        .prize-result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--gold);
+            min-height: 40px;
+        }
     </style>
 </head>
 <body>
@@ -713,6 +741,7 @@
         <div class="products-grid" id="productsGrid"></div>
     </div>
 
+    <!-- Модалка корзины -->
     <div class="modal-overlay" id="cartModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -738,6 +767,7 @@
         </div>
     </div>
 
+    <!-- Модалка избранного -->
     <div class="modal-overlay" id="favModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -749,6 +779,7 @@
         </div>
     </div>
 
+    <!-- Модалка колеса фортуны (улучшенная) -->
     <div class="modal-overlay" id="wheelModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -758,16 +789,19 @@
             </div>
             <div class="sheet-body">
                 <div class="wheel-container">
-                    <div class="wheel-pointer"></div>
-                    <div class="wheel-canvas" id="wheel"></div>
+                    <div class="wheel-wrapper">
+                        <div class="wheel-pointer"></div>
+                        <canvas id="wheelCanvas" width="250" height="250"></canvas>
+                    </div>
                     <input type="text" class="promo-input-modern" id="wheelPromoCode" placeholder="Введите промокод для колеса" style="margin-bottom: 15px; width: 100%;">
-                    <button class="spin-btn-modern" style="width: 100%;" id="spinWheel">Крутить колесо</button>
+                    <button class="spin-btn-modern" id="spinWheel">Крутить колесо</button>
                     <div class="prize-result" id="wheelResult"></div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Модалка истории -->
     <div class="modal-overlay" id="historyModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -779,6 +813,7 @@
         </div>
     </div>
 
+    <!-- Модалка детального просмотра товара (исправлены кнопки) -->
     <div class="modal-overlay" id="productModal">
         <div class="bottom-sheet" onclick="event.stopPropagation()">
             <div class="sheet-handle"></div>
@@ -789,8 +824,8 @@
             <div class="sheet-body" style="position: relative;">
                 <div style="position: relative; width: 100%; margin-bottom: 15px;">
                     <img id="modalProductImage" src="" style="width: 100%; border-radius: 24px; max-height: 280px; object-fit: cover; background: rgba(0,0,0,0.2); cursor: pointer; border: 1px solid rgba(255,255,255,0.05);">
-                    <button class="modal-prev" id="modalPrev" style="display: none; background: rgba(20,15,28,0.7); backdrop-filter: blur(5px);">←</button>
-                    <button class="modal-next" id="modalNext" style="display: none; background: rgba(20,15,28,0.7); backdrop-filter: blur(5px);">→</button>
+                    <button class="modal-prev" id="modalPrev" style="display: none; position: absolute; top: 50%; left: 10px; transform: translateY(-50%); background: rgba(20,15,28,0.7); backdrop-filter: blur(5px); border: none; color: white; font-size: 32px; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 10;">←</button>
+                    <button class="modal-next" id="modalNext" style="display: none; position: absolute; top: 50%; right: 10px; transform: translateY(-50%); background: rgba(20,15,28,0.7); backdrop-filter: blur(5px); border: none; color: white; font-size: 32px; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 10;">→</button>
                 </div>
                 <p id="modalProductDescription" style="margin: 15px 0; color: var(--text-muted); text-align: left; line-height: 1.5;"></p>
                 <div style="font-size: 28px; font-weight: 800; color: #e6cfff; text-shadow: 0 0 15px rgba(184,41,255,0.4);" id="modalProductPrice"></div>
@@ -799,6 +834,7 @@
         </div>
     </div>
 
+    <!-- Нижний хот-бар -->
     <div class="hotbar" id="hotbar">
         <button class="hotbar-btn" id="hotbarCart">
             <img src="/static/images/cart.png" class="hotbar-icon-img" alt="Корзина">
@@ -825,7 +861,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // API_BASE_URL теперь пустой (запросы на тот же домен)
             const API_BASE_URL = '';
 
             // Глобальные переменные
@@ -839,8 +874,8 @@
             let wheelDiscount = 0;
             let wheelPrizes = [];
             let currentProduct = null;
+            let currentProductImageIndex = 0; // глобально для навигации
 
-            // История действий
             let history = JSON.parse(localStorage.getItem('bau28_history') || '[]');
 
             function addHistory(action, productName = '', productId = '') {
@@ -873,7 +908,7 @@
             const closeWheelBtn = document.getElementById('closeWheelBtn');
             const spinBtn = document.getElementById('spinWheel');
             const wheelResultDiv = document.getElementById('wheelResult');
-            const wheel = document.getElementById('wheel');
+            const wheelCanvas = document.getElementById('wheelCanvas');
             const wheelPromoInput = document.getElementById('wheelPromoCode');
             const productModal = document.getElementById('productModal');
             const closeProductBtn = document.getElementById('closeProductBtn');
@@ -893,7 +928,6 @@
             const hotbarCartBadge = document.getElementById('hotbarCartBadge');
             const hotbarFavBadge = document.getElementById('hotbarFavBadge');
 
-            // Вспомогательные
             const formatPrice = (p) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
 
             function showNotification(text) {
@@ -925,77 +959,57 @@
                     const response = await fetch(`/api/products`);
                     if (response.ok) {
                         products = await response.json();
-                        // Преобразуем поля img в images, если нужно (для совместимости)
                         for (let cat in products) {
                             if (cat === 'vape') {
                                 for (let sub in products.vape) {
                                     products.vape[sub].forEach(p => {
-                                        if (!p.images && p.img) {
-                                            p.images = [p.img];
-                                        } else if (!p.images) {
-                                            p.images = ['/static/images/tovary/default.jpg'];
-                                        }
+                                        if (!p.images && p.img) p.images = [p.img];
+                                        else if (!p.images) p.images = ['/static/images/tovary/default.jpg'];
                                     });
                                 }
                             } else {
                                 products[cat].forEach(p => {
-                                    if (!p.images && p.img) {
-                                        p.images = [p.img];
-                                    } else if (!p.images) {
-                                        p.images = ['/static/images/tovary/default.jpg'];
-                                    }
+                                    if (!p.images && p.img) p.images = [p.img];
+                                    else if (!p.images) p.images = ['/static/images/tovary/default.jpg'];
                                 });
                             }
                         }
                     } else {
                         console.error('Ошибка загрузки товаров, используем демо-данные');
-                        // Демо-данные с полем images (пути обновлены)
-                        products = {
-                            clothes: [
-                                { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['/static/images/tovary/futbolka.jpg'], discount: 0, isNew: true },
-                                { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['/static/images/tovary/hudi.jpg'], discount: 10, isNew: false },
-                                { id: 'c3', name: 'Карго штаны', description: 'Много карманов', price: 3790, images: ['/static/images/tovary/kargo.jpg'], discount: 0, isNew: false },
-                                { id: 'c4', name: 'Бейсболка', description: 'Кепка с козырьком', price: 1990, images: ['/static/images/tovary/bejsbolka.jpg'], discount: 5, isNew: true },
-                            ],
-                            accessories: [
-                                { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['/static/images/tovary/chasy.jpg'], discount: 0, isNew: false },
-                                { id: 'a2', name: 'Очки Aviator', description: 'Солнцезащитные', price: 2290, images: ['/static/images/tovary/ochki.jpg'], discount: 0, isNew: false },
-                            ],
-                            vape: {
-                                liquids: [
-                                    { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['/static/images/tovary/liquid1.jpg'], discount: 0, isNew: true },
-                                ],
-                                disposable: [
-                                    { id: 'v2', name: 'Elf Bar 600', description: 'Одноразка', price: 1290, images: ['/static/images/tovary/elfbar.jpg'], discount: 0, isNew: false },
-                                ],
-                            },
-                            electronics: [
-                                { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['/static/images/tovary/airpods.jpg'], discount: 0, isNew: true },
-                            ]
-                        };
+                        products = getDemoProducts();
                     }
                 } catch (e) {
                     console.error('Не удалось подключиться к серверу:', e);
-                    products = {
-                        clothes: [
-                            { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['/static/images/tovary/futbolka.jpg'], discount: 0, isNew: true },
-                            { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['/static/images/tovary/hudi.jpg'], discount: 10, isNew: false },
-                        ],
-                        accessories: [
-                            { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['/static/images/tovary/chasy.jpg'], discount: 0, isNew: false },
-                        ],
-                        vape: {
-                            liquids: [
-                                { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['/static/images/tovary/liquid1.jpg'], discount: 0, isNew: true },
-                            ],
-                        },
-                        electronics: [
-                            { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['/static/images/tovary/airpods.jpg'], discount: 0, isNew: true },
-                        ]
-                    };
+                    products = getDemoProducts();
                 }
                 renderProducts();
                 initCarousels();
+            }
+
+            function getDemoProducts() {
+                return {
+                    clothes: [
+                        { id: 'c1', name: 'Футболка Oversize', description: 'Хлопок, свободный крой', price: 2990, images: ['/static/images/tovary/futbolka.jpg'], discount: 0, isNew: true },
+                        { id: 'c2', name: 'Худи с принтом', description: 'Тёплое худи', price: 4490, images: ['/static/images/tovary/hudi.jpg'], discount: 10, isNew: false },
+                        { id: 'c3', name: 'Карго штаны', description: 'Много карманов', price: 3790, images: ['/static/images/tovary/kargo.jpg'], discount: 0, isNew: false },
+                        { id: 'c4', name: 'Бейсболка', description: 'Кепка с козырьком', price: 1990, images: ['/static/images/tovary/bejsbolka.jpg'], discount: 5, isNew: true },
+                    ],
+                    accessories: [
+                        { id: 'a1', name: 'Часы сталь/кожа', description: 'Элегантные часы', price: 5490, images: ['/static/images/tovary/chasy.jpg'], discount: 0, isNew: false },
+                        { id: 'a2', name: 'Очки Aviator', description: 'Солнцезащитные', price: 2290, images: ['/static/images/tovary/ochki.jpg'], discount: 0, isNew: false },
+                    ],
+                    vape: {
+                        liquids: [
+                            { id: 'v1', name: 'Bloody Mary 30ml', description: 'Клубника со льдом', price: 890, images: ['/static/images/tovary/liquid1.jpg'], discount: 0, isNew: true },
+                        ],
+                        disposable: [
+                            { id: 'v2', name: 'Elf Bar 600', description: 'Одноразка', price: 1290, images: ['/static/images/tovary/elfbar.jpg'], discount: 0, isNew: false },
+                        ],
+                    },
+                    electronics: [
+                        { id: 'e1', name: 'Наушники TWS', description: 'Беспроводные', price: 3990, images: ['/static/images/tovary/airpods.jpg'], discount: 0, isNew: true },
+                    ]
+                };
             }
 
             // Отрисовка каталога
@@ -1104,15 +1118,16 @@
                 initCarousels();
             }
 
+            // Модалка товара (исправлено)
             function openProductModal(product) {
                 currentProduct = product;
-                currentProductImageIndex = 0;
+                currentProductImageIndex = 0; // сброс индекса
                 modalProductTitle.textContent = product.name;
                 modalProductDescription.textContent = product.description || 'Описание отсутствует';
                 const finalPrice = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                 modalProductPrice.innerHTML = product.discount ? `<span class="old-price">${formatPrice(product.price)}</span> ${formatPrice(finalPrice)}` : formatPrice(finalPrice);
                 
-                // Перенавешиваем обработчик на кнопку в модалке (чтобы не дублировались)
+                // Обновляем обработчик кнопки "В корзину" (чтобы не дублировать)
                 const newBtn = modalAddToCart.cloneNode(true);
                 modalAddToCart.parentNode.replaceChild(newBtn, modalAddToCart);
                 newBtn.addEventListener('click', () => {
@@ -1120,8 +1135,7 @@
                     addHistory('Добавление в корзину (через карточку)', currentProduct.name, currentProduct.id);
                     productModal.classList.remove('active');
                 });
-                // Обновляем ссылку на DOM-элемент
-                Object.defineProperty(window, 'modalAddToCart', { value: newBtn, writable: true });
+                window.modalAddToCart = newBtn; // для доступа в других местах, если нужно
 
                 updateModalImage();
                 productModal.classList.add('active');
@@ -1135,26 +1149,30 @@
                 const modalPrev = document.getElementById('modalPrev');
                 const modalNext = document.getElementById('modalNext');
                 if (images.length <= 1) {
-                    if (modalPrev) modalPrev.style.display = 'none';
-                    if (modalNext) modalNext.style.display = 'none';
+                    modalPrev.style.display = 'none';
+                    modalNext.style.display = 'none';
                 } else {
-                    if (modalPrev) modalPrev.style.display = 'flex';
-                    if (modalNext) modalNext.style.display = 'flex';
+                    modalPrev.style.display = 'flex';
+                    modalNext.style.display = 'flex';
                 }
             }
 
+            // Обработчики стрелок (теперь работают, т.к. currentProductImageIndex глобальный)
             document.getElementById('modalPrev').addEventListener('click', () => {
+                if (!currentProduct) return;
                 const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
                 currentProductImageIndex = (currentProductImageIndex - 1 + images.length) % images.length;
                 updateModalImage();
             });
 
             document.getElementById('modalNext').addEventListener('click', () => {
+                if (!currentProduct) return;
                 const images = currentProduct.images && currentProduct.images.length ? currentProduct.images : [currentProduct.img || '/static/images/tovary/default.jpg'];
                 currentProductImageIndex = (currentProductImageIndex + 1) % images.length;
                 updateModalImage();
             });
 
+            // Корзина
             window.changeQty = function(id, delta) {
                 const item = cart.find(i => i.id === id);
                 if (item) {
@@ -1166,15 +1184,11 @@
 
             function addToCart(product, qty = 1) {
                 const existing = cart.find(i => i.id === product.id);
+                const price = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                 if (existing) {
                     existing.quantity += qty;
                 } else {
-                    cart.push({ 
-                        id: product.id, 
-                        name: product.name, 
-                        price: product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price, 
-                        quantity: qty 
-                    });
+                    cart.push({ id: product.id, name: product.name, price: price, quantity: qty });
                 }
                 updateCart();
                 showNotification('✅ В корзине!');
@@ -1240,6 +1254,7 @@
                 updateCart();
             };
 
+            // Промокоды
             applyPromoBtn.addEventListener('click', async () => {
                 const code = promoInput.value.trim().toUpperCase();
                 if (!code) {
@@ -1259,6 +1274,7 @@
                             wheelPromoInput.value = code;
                             promoMessage.textContent = '✅ Промокод активирован! Теперь крутите колесо.';
                             wheelModal.classList.add('active');
+                            fetchWheelPrizes(); // загружаем призы и рисуем колесо
                         } else {
                             appliedPromo = { 
                                 code, 
@@ -1279,15 +1295,90 @@
                 updateCart();
             });
 
+            // ========== КОЛЕСО ФОРТУНЫ (улучшенное) ==========
             async function fetchWheelPrizes() {
                 try {
                     const response = await fetch(`/api/wheel/prizes`);
                     if (response.ok) {
                         wheelPrizes = await response.json();
+                        drawWheel(); // отрисовываем колесо
+                    } else {
+                        console.warn('Не удалось загрузить призы колеса');
                     }
                 } catch (e) {
-                    console.warn('Не удалось загрузить призы колеса');
+                    console.warn('Ошибка загрузки призов:', e);
                 }
+            }
+
+            function drawWheel() {
+                if (!wheelCanvas) return;
+                const ctx = wheelCanvas.getContext('2d');
+                const width = 250, height = 250;
+                const centerX = width/2, centerY = height/2;
+                const radius = 110; // чуть меньше, чтобы влезли сектора
+                
+                ctx.clearRect(0, 0, width, height);
+                
+                if (!wheelPrizes || wheelPrizes.length === 0) {
+                    // Если призов нет, рисуем заглушку
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#333';
+                    ctx.fill();
+                    ctx.strokeStyle = '#b829ff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 14px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('Нет призов', centerX, centerY);
+                    return;
+                }
+
+                // Вычисляем общий вес
+                const totalWeight = wheelPrizes.reduce((sum, p) => sum + (p.probability || 1), 0);
+                let startAngle = -Math.PI / 2; // начинаем с верхней точки (12 часов)
+
+                // Цвета для секторов
+                const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFE194', '#B83B5E', '#6A2C70', '#F08A5D', '#B4A5A5', '#3F72AF'];
+                
+                wheelPrizes.forEach((prize, index) => {
+                    const angle = (prize.probability || 1) / totalWeight * 2 * Math.PI;
+                    const endAngle = startAngle + angle;
+                    
+                    // Рисуем сектор
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, centerY);
+                    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                    ctx.closePath();
+                    ctx.fillStyle = colors[index % colors.length];
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Добавляем иконку или текст (опционально)
+                    const midAngle = startAngle + angle / 2;
+                    const textX = centerX + Math.cos(midAngle) * radius * 0.6;
+                    const textY = centerY + Math.sin(midAngle) * radius * 0.6;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 12px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(prize.icon || '🎁', textX, textY);
+                    
+                    startAngle = endAngle;
+                });
+
+                // Рисуем центральный круг
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 20, 0, 2 * Math.PI);
+                ctx.fillStyle = '#1a1122';
+                ctx.fill();
+                ctx.strokeStyle = '#b829ff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
             }
 
             spinBtn.addEventListener('click', async () => {
@@ -1296,6 +1387,7 @@
                     wheelResultDiv.textContent = 'Сначала нужен промокод!';
                     return;
                 }
+                // Проверяем промокод
                 try {
                     const resp = await fetch(`/api/check_promo`, {
                         method: 'POST',
@@ -1317,11 +1409,13 @@
                     return;
                 }
 
-                const rotations = 5 + Math.random() * 3;
+                // Анимация вращения
+                const rotations = 5 + Math.random() * 3; // 5-8 оборотов
                 const degrees = rotations * 360 + Math.random() * 360;
-                wheel.style.transform = `rotate(${degrees}deg)`;
+                wheelCanvas.style.transform = `rotate(${degrees}deg)`;
 
                 setTimeout(() => {
+                    // Определяем выигрышный сектор
                     const totalWeight = wheelPrizes.reduce((s, p) => s + (p.probability || 1), 0);
                     let rand = Math.random() * totalWeight;
                     let selected = null;
@@ -1334,6 +1428,7 @@
                     }
                     if (!selected) selected = wheelPrizes[0];
 
+                    // Применяем скидку
                     if (selected.type === 'percent') {
                         const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
                         wheelDiscount = Math.round(subtotal * selected.value / 100);
@@ -1343,12 +1438,22 @@
                         wheelDiscount = 0;
                     }
 
-                    wheelResultDiv.innerHTML = `🎉 Выпало: ${selected.icon || '🎁'} ${selected.description}!`;
+                    wheelResultDiv.innerHTML = `🎉 Ваш приз: ${selected.icon || '🎁'} ${selected.description}!`;
                     addHistory('Колесо фортуны', selected.description);
                     updateCart();
+
+                    // Сбрасываем поворот для следующего раза (но можно оставить как есть)
+                    // wheelCanvas.style.transform = 'rotate(0deg)'; // если нужно вернуть
                 }, 3000);
             });
 
+            // При открытии модалки колеса загружаем призы и рисуем
+            hotbarWheel.addEventListener('click', () => {
+                wheelModal.classList.add('active');
+                fetchWheelPrizes();
+            });
+
+            // Избранное
             function toggleFavorite(product) {
                 const id = product.id;
                 const index = favorites.indexOf(id);
@@ -1376,33 +1481,13 @@
 
                 let html = '';
                 favorites.forEach(id => {
-                    let product = null;
-                    for (let cat in products) {
-                        if (cat === 'vape') {
-                            for (let sub in products.vape) {
-                                const found = products.vape[sub]?.find(p => p.id === id);
-                                if (found) {
-                                    product = found;
-                                    break;
-                                }
-                            }
-                        } else {
-                            const found = products[cat]?.find(p => p.id === id);
-                            if (found) {
-                                product = found;
-                                break;
-                            }
-                        }
-                        if (product) break;
-                    }
-
+                    let product = findProduct(id);
                     if (!product) {
                         favorites = favorites.filter(fid => fid !== id);
                         localStorage.setItem('bau28_fav', JSON.stringify(favorites));
                         updateFavBadge();
                         return;
                     }
-
                     const price = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                     html += `
                         <div class="cart-item-modern">
@@ -1447,6 +1532,7 @@
                 });
             }
 
+            // История
             function renderHistoryItems() {
                 const container = document.getElementById('historyItems');
                 if (!container) return;
@@ -1465,6 +1551,7 @@
                 `).join('');
             }
 
+            // Отправка заказа
             orderBtn.addEventListener('click', async () => {
                 if (cart.length === 0) return;
 
@@ -1492,26 +1579,14 @@
                     alert('Тестовый режим. Заказ: ' + JSON.stringify(orderData));
                 }
 
-                if (API_BASE_URL) {
-                    try {
-                        await fetch(`${API_BASE_URL}/api/order`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(orderData)
-                        });
-                    } catch (error) {
-                        console.error('Не удалось отправить заказ на сервер:', error);
-                    }
-                } else {
-                    try {
-                        await fetch(`/api/order`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(orderData)
-                        });
-                    } catch (error) {
-                        console.error('Не удалось отправить заказ на сервер:', error);
-                    }
+                try {
+                    await fetch(`/api/order`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(orderData)
+                    });
+                } catch (error) {
+                    console.error('Не удалось отправить заказ на сервер:', error);
                 }
 
                 addHistory('Оформление заказа', `Сумма: ${formatPrice(total)}`);
@@ -1526,6 +1601,7 @@
                 showNotification('🚀 Заказ отправлен!');
             });
 
+            // Модалки через хотбар
             hotbarCart.addEventListener('click', () => {
                 renderCartItems();
                 cartModal.classList.add('active');
@@ -1536,22 +1612,19 @@
                 favModal.classList.add('active');
             });
 
-            hotbarWheel.addEventListener('click', () => {
-                wheelModal.classList.add('active');
-                fetchWheelPrizes();
-            });
-
             hotbarHistory.addEventListener('click', () => {
                 renderHistoryItems();
                 historyModal.classList.add('active');
             });
 
+            // Закрытие модалок
             closeCartBtn.addEventListener('click', () => cartModal.classList.remove('active'));
             closeFavBtn.addEventListener('click', () => favModal.classList.remove('active'));
             closeWheelBtn.addEventListener('click', () => wheelModal.classList.remove('active'));
             closeHistoryBtn.addEventListener('click', () => historyModal.classList.remove('active'));
             closeProductBtn.addEventListener('click', () => productModal.classList.remove('active'));
 
+            // Закрытие свайпом вниз
             const sheets = [cartModal, favModal, wheelModal, productModal, historyModal];
             sheets.forEach(modal => {
                 if (!modal) return;
@@ -1569,7 +1642,7 @@
                     if (startY === 0) return;
                     const touch = e.touches[0];
                     const diff = touch.clientY - startY;
-                    if (diff > 80) { // Чуть увеличили порог для защиты от ложных свайпов
+                    if (diff > 80) {
                         modal.classList.remove('active');
                         startY = 0;
                     }
@@ -1580,6 +1653,7 @@
                 });
             });
 
+            // Закрытие по клику на оверлей
             sheets.forEach(modal => {
                 if (!modal) return;
                 modal.addEventListener('click', (e) => {
@@ -1587,6 +1661,7 @@
                 });
             });
 
+            // Категории
             document.querySelectorAll('.cat-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
@@ -1635,7 +1710,6 @@
                         currentIndex = index;
                         images.forEach((img, i) => {
                             img.style.display = i === currentIndex ? 'block' : 'none';
-                            // Небольшой эффект fade in при переключении
                             if (i === currentIndex) {
                                 img.style.opacity = '0';
                                 setTimeout(() => img.style.opacity = '1', 10);
@@ -1676,6 +1750,7 @@
                 });
             }
 
+            // Инициализация
             (async () => {
                 await loadProducts();
                 updateCart();
@@ -1691,5 +1766,3 @@
     </script>
 </body>
 </html>
-
-
