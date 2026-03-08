@@ -1535,7 +1535,12 @@ async def get_products():
         cat = doc['category']
         sub = doc.get('subcategory')
         images = doc.get('images', [])
-        full_image_urls = [f"{BASE_URL}{img}" for img in images]
+        full_image_urls = []
+        for img in images:
+            if img.startswith('http'):
+                full_image_urls.append(img)  # уже абсолютный URL
+            else:
+                full_image_urls.append(f"{BASE_URL}{img}")  # добавляем BASE_URL
         product = {
             "id": doc['id'],
             "name": doc['name'],
@@ -1544,7 +1549,7 @@ async def get_products():
             "discount": doc.get('discount', 0),
             "isNew": doc.get('is_new', False),
             "images": full_image_urls,
-            "img": full_image_urls[0] if full_image_urls else "/static/uploaded/default.jpg"
+            "img": full_image_urls[0] if full_image_urls else f"{BASE_URL}/static/uploaded/default.jpg"
         }
         if cat == "vape":
             if cat not in products:
@@ -1917,7 +1922,7 @@ async def admin_save_settings(settings: dict, admin=Depends(get_current_admin)):
             {"$set": {"value": value, "updated_at": datetime.now()}},
             upsert=True
         )
-    log_admin_action_db(admin, "Обновил настройки", settings)
+    await log_admin_action_db(admin, "Обновил настройки", settings)
     return {"ok": True}
 
 @app.post("/admin/upload")
