@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin · вход по ID</title>
+    <title>Bau28 Admin · управление магазином</title>
     <!-- Chart.js для графиков -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* ========== СТИЛИ (полностью скопированы из вашего admin.html) ========== */
         * {
             margin: 0;
             padding: 0;
@@ -415,7 +416,6 @@
                             <button type="button" onclick="saveSettings()">Сохранить</button>
                         </form>
                     </div>
-                    <!-- Секция смены пароля полностью удалена -->
                 </div>
             </div>
 
@@ -440,6 +440,8 @@
         <div class="modal-content">
             <h2 id="product-modal-title">Добавление товара</h2>
             <input type="hidden" id="product-id">
+            <!-- Скрытое поле для хранения существующих изображений (JSON) -->
+            <input type="hidden" id="product-existing-images" value="[]">
             <input type="text" id="product-name" placeholder="Название *">
             <textarea id="product-description" placeholder="Описание" rows="3"></textarea>
             <input type="number" id="product-price" placeholder="Цена *">
@@ -456,7 +458,7 @@
                 <option value="1">Новинка</option>
             </select>
             <div>
-                <label>Изображения</label>
+                <label>Изображения (можно выбрать несколько)</label>
                 <input type="file" id="product-images" accept="image/*" multiple>
                 <div id="product-image-preview" class="image-preview"></div>
             </div>
@@ -517,10 +519,11 @@
     </div>
 
     <script>
+        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
         let token = localStorage.getItem('token');
         let salesChart = null;
 
-        // Уведомление
+        // ==================== УВЕДОМЛЕНИЯ ====================
         function showNotification(text, isError = false) {
             const notif = document.getElementById('notification');
             notif.style.background = isError ? 'linear-gradient(135deg, #ff4444, #ff6b6b)' : 'linear-gradient(135deg, #8a2be2, #b829ff)';
@@ -529,7 +532,7 @@
             setTimeout(() => notif.classList.remove('show'), 3000);
         }
 
-        // Проверка токена при загрузке
+        // ==================== ПРОВЕРКА ТОКЕНА ====================
         (async function() {
             if (token) {
                 try {
@@ -547,18 +550,17 @@
             }
         })();
 
-        // Вход: только ID (пароль не нужен)
+        // ==================== ВХОД ====================
         async function login() {
             const userId = document.getElementById('login-userid').value;
             if (!userId) {
                 document.getElementById('login-error').textContent = 'Введите Telegram ID';
                 return;
             }
-            // Отправляем POST с одним полем user_id
             const res = await fetch('/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId }) // пароль не передаём
+                body: JSON.stringify({ user_id: userId })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -573,7 +575,7 @@
             }
         }
 
-        // Загрузка всех данных после входа
+        // ==================== ЗАГРУЗКА ВСЕХ ДАННЫХ ====================
         async function loadAllData() {
             await loadProducts();
             await loadOrders();
@@ -585,7 +587,7 @@
             await loadSettings();
         }
 
-        // Переключение вкладок
+        // ==================== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -625,6 +627,7 @@
             `).join('');
         }
 
+        // Предпросмотр изображений перед загрузкой
         function previewImages(event) {
             const preview = document.getElementById('product-image-preview');
             preview.innerHTML = '';
@@ -640,6 +643,7 @@
         }
         document.getElementById('product-images').addEventListener('change', previewImages);
 
+        // Загрузка изображений на сервер, возвращает массив полных URL
         async function uploadImages(files) {
             const urls = [];
             for (let file of files) {
@@ -652,7 +656,7 @@
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    urls.push(data.url);
+                    urls.push(data.url); // data.url уже полный URL с BASE_URL
                 } else {
                     showNotification('Ошибка загрузки файла ' + file.name, true);
                 }
@@ -663,6 +667,7 @@
         function showAddProductModal() {
             document.getElementById('product-modal-title').textContent = 'Добавление товара';
             document.getElementById('product-id').value = '';
+            document.getElementById('product-existing-images').value = '[]';
             document.getElementById('product-name').value = '';
             document.getElementById('product-description').value = '';
             document.getElementById('product-price').value = '';
@@ -672,6 +677,7 @@
             document.getElementById('product-isnew').value = '0';
             document.getElementById('product-image-preview').innerHTML = '';
             document.getElementById('product-images').value = '';
+            document.getElementById('product-error').textContent = '';
             document.getElementById('product-modal').classList.add('active');
         }
 
@@ -695,14 +701,26 @@
                 return;
             }
 
-            let imageUrls = [];
+            // Загружаем новые изображения
+            let newImageUrls = [];
             if (imageFiles.length > 0) {
-                imageUrls = await uploadImages(imageFiles);
+                newImageUrls = await uploadImages(imageFiles);
             }
+
+            // Получаем существующие изображения из скрытого поля
+            let existingImages = [];
+            try {
+                existingImages = JSON.parse(document.getElementById('product-existing-images').value || '[]');
+            } catch (e) {
+                existingImages = [];
+            }
+
+            // Объединяем: старые + новые
+            const allImages = [...existingImages, ...newImageUrls];
 
             const productData = {
                 name, description, price, category, subcategory, discount, is_new,
-                images: imageUrls
+                images: allImages
             };
 
             const url = id ? `/admin/products/${id}` : '/admin/products';
@@ -741,6 +759,9 @@
             document.getElementById('product-subcategory').value = p.subcategory || '';
             document.getElementById('product-discount').value = p.discount || 0;
             document.getElementById('product-isnew').value = p.is_new ? '1' : '0';
+            // Сохраняем существующие изображения в скрытое поле
+            document.getElementById('product-existing-images').value = JSON.stringify(p.images || []);
+            // Показываем предпросмотр существующих
             const preview = document.getElementById('product-image-preview');
             preview.innerHTML = '';
             (p.images || []).forEach(url => {
@@ -748,6 +769,8 @@
                 img.src = url;
                 preview.appendChild(img);
             });
+            document.getElementById('product-images').value = ''; // очищаем input file
+            document.getElementById('product-error').textContent = '';
             document.getElementById('product-modal').classList.add('active');
         }
 
