@@ -5,6 +5,8 @@ import uuid
 import os
 import csv
 import random
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
@@ -79,6 +81,9 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 день
 
+# VK настройки (для проверки подписи)
+VK_SECRET_KEY = os.getenv("VK_SECRET_KEY", "")  # Секретный ключ приложения VK
+
 # Логирование
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -106,7 +111,7 @@ blocked_users_col = db["blocked_users"]
 wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
-wheel_usage_col = db["wheel_usage"]  # Новая коллекция
+wheel_usage_col = db["wheel_usage"]
 
 async def init_mongodb():
     try:
@@ -166,6 +171,33 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
     if int(user_id) not in ADMIN_IDS:
         raise HTTPException(status_code=403, detail="Access denied")
     return user_id
+
+# ==================== VK АУТЕНТИФИКАЦИЯ ====================
+def verify_vk_signature(params: dict, secret: str) -> bool:
+    """Проверка подписи VK для защиты от поддельных запросов"""
+    if not secret:
+        return True  # Если ключ не задан, пропускаем проверку (для разработки)
+    
+    # Копируем параметры и удаляем sign
+    vk_params = params.copy()
+    sign = vk_params.pop('sign', None)
+    if not sign:
+        return False
+    
+    # Сортируем ключи и формируем строку
+    items = []
+    for key in sorted(vk_params.keys()):
+        items.append(f"{key}={vk_params[key]}")
+    params_str = '&'.join(items)
+    
+    # Вычисляем подпись
+    expected_sign = hmac.new(
+        key=secret.encode(),
+        msg=params_str.encode(),
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(sign, expected_sign)
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def is_admin(user_id: int) -> bool:
@@ -1583,14 +1615,15 @@ async def create_order(request: Request):
     order_id = str(uuid.uuid4().hex[:8])
     order_doc = {
         "id": order_id,
-        "user_id": order.get('user', 'unknown'),
-        "user_name": order.get('user', 'unknown'),
+        "user_id": order.get('user_id', 'unknown'),
+        "user_name": order.get('user_name', 'unknown'),
         "items": order['items'],
         "total": total,
         "status": "new",
         "created_at": datetime.now(),
         "promo_used": promo_code,
-        "discount_applied": discount
+        "discount_applied": discount,
+        "platform": order.get('platform', 'telegram')  # telegram или vk
     }
     await orders_col.insert_one(order_doc)
     return {"status": "ok", "order_id": order_id}
@@ -1640,10 +1673,11 @@ async def get_wheel_prizes():
         })
     return result
 
-# ==================== НОВЫЙ ЭНДПОИНТ ДЛЯ КОЛЕСА ====================
+# ==================== ЭНДПОИНТ ДЛЯ КОЛЕСА (с поддержкой VK) ====================
 class WheelSpinRequest(BaseModel):
     promo_code: str
     user_id: str
+    sign: Optional[str] = None  # Для VK подписи
 
 @app.post("/api/wheel/spin")
 async def wheel_spin(request: WheelSpinRequest):
@@ -1653,6 +1687,12 @@ async def wheel_spin(request: WheelSpinRequest):
     """
     promo_code = request.promo_code.strip().upper()
     user_id = request.user_id.strip()
+
+    # Если передан sign, можно проверить подпись (для VK)
+    if request.sign:
+        params = {"promo_code": promo_code, "user_id": user_id}
+        if not verify_vk_signature(params, VK_SECRET_KEY):
+            raise HTTPException(status_code=403, detail="Неверная подпись")
 
     # Проверка промокода
     promo = await promocodes_col.find_one({"code": promo_code})
@@ -2028,11 +2068,26 @@ async def get_admin_page():
 
 @app.get("/", response_class=HTMLResponse)
 async def get_store():
+    # По умолчанию отдаём Telegram-версию (index.html)
     try:
         with open("static/index.html", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return HTMLResponse(content="Файл магазина не найден. Создайте static/index.html", status_code=404)
+
+@app.get("/vk", response_class=HTMLResponse)
+async def get_vk_store():
+    """Отдельный маршрут для VK Mini Apps"""
+    try:
+        with open("static/index_vk.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        # Если нет отдельного файла, можно отдать общий (но лучше создать)
+        try:
+            with open("static/index.html", "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return HTMLResponse(content="Файл магазина не найден. Создайте static/index_vk.html или static/index.html", status_code=404)
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
