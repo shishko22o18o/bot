@@ -274,7 +274,7 @@ def generate_help_text() -> str:
 
 📤 Экспорт / Импорт
 📤 Экспорт CSV (кнопка) – выгрузка товаров в CSV
-/backup – полная резервная копия (JSON)
+/backup – полная резервная кпия (JSON)
 /restore – восстановление из JSON (с подтверждением)
 
 ❌ Отмена – отмена текущего действия в любом FSM
@@ -336,6 +336,7 @@ class WheelPrize(StatesGroup):
     probability = State()
 
 # ==================== ХЭНДЛЕРЫ БОТА ====================
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     admin = is_admin(message.from_user.id)
@@ -387,6 +388,17 @@ async def handle_web_app_data(message: Message):
                     total -= discount
                     await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
 
+        # Уменьшаем остатки товаров
+        for item in items:
+            product_id = item['id']
+            quantity = item['quantity']
+            product = await get_product_by_id(product_id)
+            if product:
+                new_stock = product.get('stock', 0) - quantity
+                if new_stock < 0:
+                    new_stock = 0
+                await products_col.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
+
         order_id = str(uuid.uuid4().hex[:8])
         order_doc = {
             "id": order_id,
@@ -397,7 +409,8 @@ async def handle_web_app_data(message: Message):
             "status": "new",
             "created_at": datetime.now(),
             "promo_used": promo_code if promo_code else None,
-            "discount_applied": discount
+            "discount_applied": discount,
+            "platform": "telegram"
         }
         await orders_col.insert_one(order_doc)
 
@@ -572,6 +585,7 @@ async def add_photos_done(message: Message, state: FSMContext):
         "discount": data['discount'],
         "is_new": data['is_new'],
         "images": photos,
+        "stock": 0,  # по умолчанию 0
         "created_at": datetime.now()
     }
     await products_col.insert_one(product_doc)
@@ -591,8 +605,8 @@ async def cmd_bulk_add(message: Message):
     if not is_admin(message.from_user.id):
         return
     await message.answer("Отправьте CSV-файл с товарами.\n"
-                         "Формат: название,описание,цена,категория,подкатегория(если vape),скидка,новинка(0/1)\n"
-                         "Пример: Футболка,Хлопок 100%,2990,clothes,,0,1")
+                         "Формат: название,описание,цена,категория,подкатегория(если vape),скидка,новинка(0/1),количество\n"
+                         "Пример: Футболка,Хлопок 100%,2990,clothes,,0,1,10")
 
 @dp.message(F.document)
 async def handle_csv(message: Message, bot: Bot):
@@ -614,7 +628,7 @@ async def handle_csv(message: Message, bot: Bot):
         if first_row and first_row[0].strip().lower() == 'id':
             for row in reader:
                 try:
-                    if len(row) < 8:
+                    if len(row) < 9:
                         errors.append(f"Недостаточно полей: {row}")
                         continue
                     name = row[1]
@@ -624,6 +638,7 @@ async def handle_csv(message: Message, bot: Bot):
                     subcat = row[5] if len(row) > 5 else ""
                     discount = int(row[6]) if row[6] else 0
                     is_new = int(row[7]) if row[7] else 0
+                    stock = int(row[8]) if len(row) > 8 else 0
                     product_id = f"p{uuid.uuid4().hex[:8]}"
                     product_doc = {
                         "id": product_id,
@@ -635,6 +650,7 @@ async def handle_csv(message: Message, bot: Bot):
                         "discount": discount,
                         "is_new": is_new,
                         "images": [],
+                        "stock": stock,
                         "created_at": datetime.now()
                     }
                     await products_col.insert_one(product_doc)
@@ -645,13 +661,14 @@ async def handle_csv(message: Message, bot: Bot):
             rows = [first_row] + list(reader) if first_row else list(reader)
             for row in rows:
                 try:
-                    if len(row) < 7:
+                    if len(row) < 8:
                         errors.append(f"Недостаточно полей: {row}")
                         continue
-                    name, desc, price_str, cat, subcat, discount_str, is_new_str = row[:7]
+                    name, desc, price_str, cat, subcat, discount_str, is_new_str, stock_str = row[:8]
                     price = int(price_str)
                     discount = int(discount_str)
                     is_new = int(is_new_str)
+                    stock = int(stock_str) if stock_str else 0
                     subcat = subcat if subcat else ""
                     product_id = f"p{uuid.uuid4().hex[:8]}"
                     product_doc = {
@@ -664,6 +681,7 @@ async def handle_csv(message: Message, bot: Bot):
                         "discount": discount,
                         "is_new": is_new,
                         "images": [],
+                        "stock": stock,
                         "created_at": datetime.now()
                     }
                     await products_col.insert_one(product_doc)
@@ -690,10 +708,10 @@ async def cmd_export_products(message: Message):
         return
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "images"])
+    writer.writerow(["id", "name", "description", "price", "category", "subcategory", "discount", "is_new", "images", "stock"])
     for p in products:
         images_str = ','.join(p.get('images', []))
-        writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], images_str])
+        writer.writerow([p['id'], p['name'], p['description'], p['price'], p['category'], p['subcategory'], p['discount'], p['is_new'], images_str, p.get('stock', 0)])
     csv_data = output.getvalue().encode('utf-8')
     output.close()
     temp_file = f"/tmp/export_{message.from_user.id}.csv"
@@ -805,7 +823,7 @@ async def show_product_list(cat: str, page: int, callback: CallbackQuery):
     for p in products:
         final_price = p['price'] if not p['discount'] else p['price'] * (100 - p['discount']) // 100
         desc = p['description'][:50] + "..." if p['description'] and len(p['description']) > 50 else (p['description'] or "без описания")
-        text += f"ID: {p['id']} | {p['name']} | {final_price}₽\n   Описание: {desc}\n\n"
+        text += f"ID: {p['id']} | {p['name']} | {final_price}₽ | Остаток: {p.get('stock', 0)}\n   Описание: {desc}\n\n"
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"list_{cat}_{page-1}"))
@@ -881,6 +899,7 @@ async def edit_product_menu(callback: CallbackQuery):
         text += f"Подкатегория: {product['subcategory']}\n"
     text += f"Скидка: {product['discount']}%\n"
     text += f"Новинка: {'да' if product['is_new'] else 'нет'}\n"
+    text += f"Остаток: {product.get('stock', 0)}\n"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{product_id}_field_name")],
         [InlineKeyboardButton(text="📝 Описание", callback_data=f"edit_{product_id}_field_description")],
@@ -888,6 +907,7 @@ async def edit_product_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="📁 Категория", callback_data=f"edit_{product_id}_field_category")],
         [InlineKeyboardButton(text="🏷 Скидка", callback_data=f"edit_{product_id}_field_discount")],
         [InlineKeyboardButton(text="🆕 Новинка", callback_data=f"edit_{product_id}_field_isnew")],
+        [InlineKeyboardButton(text="📦 Количество", callback_data=f"edit_{product_id}_field_stock")],
         [InlineKeyboardButton(text="🖼 Фото", callback_data=f"edit_{product_id}_field_photo")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data=f"list_{product['category']}_0")]
     ])
@@ -914,6 +934,9 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
     elif field == "discount":
         await state.set_state(EditProduct.new_value)
         await callback.message.edit_text("Введите новую скидку (число):")
+    elif field == "stock":
+        await state.set_state(EditProduct.new_value)
+        await callback.message.edit_text("Введите новое количество товара (число):")
     elif field == "isnew":
         product = await get_product_by_id(product_id)
         if product:
@@ -932,7 +955,7 @@ async def edit_text_field(message: Message, state: FSMContext):
     product_id = data['edit_id']
     field = data['edit_field']
     new_value = message.text
-    if field in ["price", "discount"] and not new_value.isdigit():
+    if field in ["price", "discount", "stock"] and not new_value.isdigit():
         await message.answer(f"❌ {field} должно быть числом. Попробуйте ещё раз:")
         return
     if field == "category" and new_value not in ['clothes', 'accessories', 'vape', 'electronics']:
@@ -950,6 +973,8 @@ async def edit_text_field(message: Message, state: FSMContext):
         update_data["subcategory"] = ""
     elif field == "discount":
         update_data["discount"] = int(new_value)
+    elif field == "stock":
+        update_data["stock"] = int(new_value)
     if update_data:
         await products_col.update_one({"id": product_id}, {"$set": update_data})
         log_admin_action(message.from_user.id, f"Изменил поле {field} товара ID {product_id} на {new_value}")
@@ -1563,7 +1588,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ==================== ПУБЛИЧНЫЕ API ====================
 @app.get("/api/products")
 async def get_products():
-    cursor = products_col.find({})
+    # Возвращаем только товары, которые есть в наличии (stock > 0)
+    cursor = products_col.find({"stock": {"$gt": 0}})
     products = {}
     async for doc in cursor:
         cat = doc['category']
@@ -1612,6 +1638,18 @@ async def create_order(request: Request):
                 discount = promo['value']
             total -= discount
             await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
+
+    # Уменьшаем остатки
+    for item in order['items']:
+        product_id = item['id']
+        quantity = item['quantity']
+        product = await get_product_by_id(product_id)
+        if product:
+            new_stock = product.get('stock', 0) - quantity
+            if new_stock < 0:
+                new_stock = 0
+            await products_col.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
+
     order_id = str(uuid.uuid4().hex[:8])
     order_doc = {
         "id": order_id,
@@ -1623,7 +1661,7 @@ async def create_order(request: Request):
         "created_at": datetime.now(),
         "promo_used": promo_code,
         "discount_applied": discount,
-        "platform": order.get('platform', 'telegram')  # telegram или vk
+        "platform": order.get('platform', 'unknown')
     }
     await orders_col.insert_one(order_doc)
     return {"status": "ok", "order_id": order_id}
@@ -1673,7 +1711,6 @@ async def get_wheel_prizes():
         })
     return result
 
-# ==================== ЭНДПОИНТ ДЛЯ КОЛЕСА (с поддержкой VK) ====================
 class WheelSpinRequest(BaseModel):
     promo_code: str
     user_id: str
@@ -1779,6 +1816,8 @@ async def admin_create_product(product: dict, admin=Depends(get_current_admin)):
     product["created_at"] = datetime.now()
     if "images" not in product:
         product["images"] = []
+    if "stock" not in product:
+        product["stock"] = 0
     await products_col.insert_one(product)
     log_admin_action(admin, f"Создал товар {product_id}")
     return {"id": product_id}
@@ -2068,7 +2107,6 @@ async def get_admin_page():
 
 @app.get("/", response_class=HTMLResponse)
 async def get_store():
-    # По умолчанию отдаём Telegram-версию (index.html)
     try:
         with open("static/index.html", "r", encoding="utf-8") as f:
             return f.read()
@@ -2077,12 +2115,10 @@ async def get_store():
 
 @app.get("/vk", response_class=HTMLResponse)
 async def get_vk_store():
-    """Отдельный маршрут для VK Mini Apps"""
     try:
         with open("static/index_vk.html", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        # Если нет отдельного файла, можно отдать общий (но лучше создать)
         try:
             with open("static/index.html", "r", encoding="utf-8") as f:
                 return f.read()
