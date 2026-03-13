@@ -434,55 +434,68 @@
         </div>
     </div>
 
-    <!-- Модальное окно для товара -->
-    <div class="modal" id="product-modal">
-        <div class="modal-content">
-            <h2 id="product-modal-title">Добавление товара</h2>
-            <input type="hidden" id="product-id">
-            <!-- Скрытое поле для хранения существующих изображений (JSON) -->
-            <input type="hidden" id="product-existing-images" value="[]">
-            
-            <input type="text" id="product-name" placeholder="Название товара *" title="Введите название товара">
-            <textarea id="product-description" placeholder="Описание товара" rows="3" title="Подробное описание"></textarea>
-            <input type="number" id="product-price" placeholder="Цена (в рублях) *" title="Цена в рублях, только число">
-            <select id="product-category">
-                <option value="clothes">👕 Одежда</option>
-                <option value="accessories">🕶 Аксессуары</option>
-                <option value="vape">💨 VAPE</option>
-                <option value="electronics">🎧 Электроника</option>
+ <!-- Модальное окно для товара -->
+<div class="modal" id="product-modal">
+    <div class="modal-content">
+        <h2 id="product-modal-title">Добавление товара</h2>
+        <input type="hidden" id="product-id">
+        <!-- Скрытое поле для хранения существующих изображений (JSON) -->
+        <input type="hidden" id="product-existing-images" value="[]">
+
+        <label for="product-name">Название товара <span style="color:#b829ff;">*</span></label>
+        <input type="text" id="product-name" placeholder="например, Футболка Oversize" title="Введите название товара">
+
+        <label for="product-description">Описание товара</label>
+        <textarea id="product-description" placeholder="Подробное описание, состав, особенности" rows="3" title="Подробное описание"></textarea>
+
+        <label for="product-price">Цена (в рублях) <span style="color:#b829ff;">*</span></label>
+        <input type="number" id="product-price" placeholder="2990" title="Цена в рублях, только число">
+
+        <label for="product-category">Категория</label>
+        <select id="product-category">
+            <option value="clothes">👕 Одежда</option>
+            <option value="accessories">🕶 Аксессуары</option>
+            <option value="vape">💨 VAPE</option>
+            <option value="electronics">🎧 Электроника</option>
+        </select>
+
+        <!-- Подкатегория: для VAPE это список, для остальных текстовое поле -->
+        <div id="subcategory-container">
+            <label for="product-subcategory-input" id="subcategory-label-input">Подкатегория (для всех, кроме VAPE)</label>
+            <input type="text" id="product-subcategory-input" class="subcategory-field" placeholder="например, футболки, часы" title="Укажите подкатегорию (необязательно)">
+
+            <label for="product-subcategory-select" id="subcategory-label-select" style="display: none;">Подкатегория VAPE</label>
+            <select id="product-subcategory-select" class="subcategory-field" style="display: none;">
+                <option value="liquids">Жидкости</option>
+                <option value="consumables">Расходники</option>
+                <option value="disposable">Одноразки</option>
+                <option value="pods">POD-системы</option>
             </select>
-            
-            <!-- Подкатегория: для VAPE это будет список, для остальных просто текстовое поле (скрыто подсказкой) -->
-            <div id="subcategory-container">
-                <!-- Для не-VAPE категорий показываем input -->
-                <input type="text" id="product-subcategory-input" class="subcategory-field" placeholder="Подкатегория (например, футболки, часы)" title="Укажите подкатегорию (необязательно)">
-                <!-- Для VAPE показываем select -->
-                <select id="product-subcategory-select" class="subcategory-field" style="display: none;">
-                    <option value="liquids">Жидкости</option>
-                    <option value="consumables">Расходники</option>
-                    <option value="disposable">Одноразки</option>
-                    <option value="pods">POD-системы</option>
-                </select>
-            </div>
-            
-            <input type="number" id="product-discount" placeholder="Скидка % (0 если нет)" value="0" min="0" max="100" title="Процент скидки, целое число">
-            <select id="product-isnew">
-                <option value="0">Не новинка</option>
-                <option value="1">Новинка</option>
-            </select>
-            <input type="number" id="product-stock" placeholder="Количество товара на складе *" value="1" min="0" title="Сколько единиц товара в наличии. 0 — товар не будет показываться в магазине">
-            <div>
-                <label>Изображения (можно выбрать несколько)</label>
-                <input type="file" id="product-images" accept="image/*" multiple>
-                <div id="product-image-preview" class="image-preview"></div>
-            </div>
-            <div style="display: flex; gap:10px; margin-top:20px;">
-                <button onclick="saveProduct()">Сохранить</button>
-                <button class="btn-outline" onclick="closeProductModal()">Отмена</button>
-            </div>
-            <div id="product-error" style="color:red; margin-top:10px;"></div>
         </div>
+
+        <label for="product-discount">Скидка (%)</label>
+        <input type="number" id="product-discount" placeholder="0" value="0" min="0" max="100" title="Процент скидки, целое число">
+
+        <label for="product-isnew">Новинка</label>
+        <select id="product-isnew">
+            <option value="0">Не новинка</option>
+            <option value="1">Новинка</option>
+        </select>
+
+        <label for="product-stock">Количество на складе <span style="color:#b829ff;">*</span></label>
+        <input type="number" id="product-stock" placeholder="1" value="1" min="0" title="Сколько единиц товара в наличии. 0 — товар не будет показываться в магазине">
+
+        <label>Изображения (можно выбрать несколько)</label>
+        <input type="file" id="product-images" accept="image/*" multiple>
+        <div id="product-image-preview" class="image-preview"></div>
+
+        <div style="display: flex; gap:10px; margin-top:20px;">
+            <button onclick="saveProduct()">Сохранить</button>
+            <button class="btn-outline" onclick="closeProductModal()">Отмена</button>
+        </div>
+        <div id="product-error" style="color:red; margin-top:10px;"></div>
     </div>
+</div>
 
     <!-- Модальное окно для промокода -->
     <div class="modal" id="promo-modal">
