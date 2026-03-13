@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bau28 Admin · управление магазином</title>
+    <title>управление магазином</title>
     <!-- Chart.js для графиков -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* ========== СТИЛИ (полностью скопированы из вашего admin.html) ========== */
         * {
             margin: 0;
             padding: 0;
@@ -442,21 +441,36 @@
             <input type="hidden" id="product-id">
             <!-- Скрытое поле для хранения существующих изображений (JSON) -->
             <input type="hidden" id="product-existing-images" value="[]">
-            <input type="text" id="product-name" placeholder="Название *">
-            <textarea id="product-description" placeholder="Описание" rows="3"></textarea>
-            <input type="number" id="product-price" placeholder="Цена *">
+            
+            <input type="text" id="product-name" placeholder="Название товара *" title="Введите название товара">
+            <textarea id="product-description" placeholder="Описание товара" rows="3" title="Подробное описание"></textarea>
+            <input type="number" id="product-price" placeholder="Цена (в рублях) *" title="Цена в рублях, только число">
             <select id="product-category">
-                <option value="clothes">Одежда</option>
-                <option value="accessories">Аксессуары</option>
-                <option value="vape">VAPE</option>
-                <option value="electronics">Электроника</option>
+                <option value="clothes">👕 Одежда</option>
+                <option value="accessories">🕶 Аксессуары</option>
+                <option value="vape">💨 VAPE</option>
+                <option value="electronics">🎧 Электроника</option>
             </select>
-            <input type="text" id="product-subcategory" placeholder="Подкатегория (для vape)">
-            <input type="number" id="product-discount" placeholder="Скидка %" value="0">
+            
+            <!-- Подкатегория: для VAPE это будет список, для остальных просто текстовое поле (скрыто подсказкой) -->
+            <div id="subcategory-container">
+                <!-- Для не-VAPE категорий показываем input -->
+                <input type="text" id="product-subcategory-input" class="subcategory-field" placeholder="Подкатегория (например, футболки, часы)" title="Укажите подкатегорию (необязательно)">
+                <!-- Для VAPE показываем select -->
+                <select id="product-subcategory-select" class="subcategory-field" style="display: none;">
+                    <option value="liquids">Жидкости</option>
+                    <option value="consumables">Расходники</option>
+                    <option value="disposable">Одноразки</option>
+                    <option value="pods">POD-системы</option>
+                </select>
+            </div>
+            
+            <input type="number" id="product-discount" placeholder="Скидка % (0 если нет)" value="0" min="0" max="100" title="Процент скидки, целое число">
             <select id="product-isnew">
                 <option value="0">Не новинка</option>
                 <option value="1">Новинка</option>
             </select>
+            <input type="number" id="product-stock" placeholder="Количество товара на складе *" value="1" min="0" title="Сколько единиц товара в наличии. 0 — товар не будет показываться в магазине">
             <div>
                 <label>Изображения (можно выбрать несколько)</label>
                 <input type="file" id="product-images" accept="image/*" multiple>
@@ -474,7 +488,7 @@
     <div class="modal" id="promo-modal">
         <div class="modal-content">
             <h2>Создание промокода</h2>
-            <input type="text" id="promo-code" placeholder="Код *">
+            <input type="text" id="promo-code" placeholder="Код промокода *" title="Например, SUMMER10">
             <select id="promo-type">
                 <option value="discount">Скидка</option>
                 <option value="wheel">Колесо фортуны</option>
@@ -482,12 +496,12 @@
             <div id="promo-discount-fields">
                 <select id="promo-discount-type">
                     <option value="percent">Процент</option>
-                    <option value="fixed">Фиксированная сумма</option>
+                    <option value="fixed">Фиксированная сумма (₽)</option>
                 </select>
-                <input type="number" id="promo-value" placeholder="Значение">
+                <input type="number" id="promo-value" placeholder="Значение скидки *">
             </div>
-            <input type="text" id="promo-expires" placeholder="ГГГГ-ММ-ДД или 'never'">
-            <input type="text" id="promo-max-uses" placeholder="unlimited или число">
+            <input type="text" id="promo-expires" placeholder="ГГГГ-ММ-ДД или 'never'" title="Дата окончания действия, например 2025-12-31">
+            <input type="text" id="promo-max-uses" placeholder="unlimited или число" title="Максимальное количество использований">
             <div style="display: flex; gap:10px; margin-top:20px;">
                 <button onclick="savePromo()">Создать</button>
                 <button class="btn-outline" onclick="closePromoModal()">Отмена</button>
@@ -500,16 +514,16 @@
     <div class="modal" id="wheel-modal">
         <div class="modal-content">
             <h2>Добавление приза</h2>
-            <input type="text" id="wheel-description" placeholder="Описание *">
-            <input type="text" id="wheel-icon" placeholder="Иконка (эмодзи)">
+            <input type="text" id="wheel-description" placeholder="Описание приза *" title="Что получит пользователь">
+            <input type="text" id="wheel-icon" placeholder="Иконка (эмодзи)" title="Например, 🎁, 🎉">
             <select id="wheel-type">
                 <option value="percent">Процентная скидка</option>
-                <option value="fixed">Фиксированная скидка</option>
+                <option value="fixed">Фиксированная скидка (₽)</option>
                 <option value="bonus">Бонусные баллы</option>
                 <option value="shipping">Бесплатная доставка</option>
             </select>
-            <input type="number" id="wheel-value" placeholder="Значение">
-            <input type="number" id="wheel-probability" placeholder="Вес (вероятность)" value="1">
+            <input type="number" id="wheel-value" placeholder="Значение *">
+            <input type="number" id="wheel-probability" placeholder="Вес (вероятность)" value="1" title="Чем больше число, тем выше шанс выпадения">
             <div style="display: flex; gap:10px; margin-top:20px;">
                 <button onclick="saveWheelPrize()">Сохранить</button>
                 <button class="btn-outline" onclick="closeWheelModal()">Отмена</button>
@@ -616,7 +630,7 @@
                             <button class="btn-danger" onclick="deleteProduct('${p.id}')"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <div><strong>Цена:</strong> ${p.price} ₽, скидка: ${p.discount}%</div>
+                    <div><strong>Цена:</strong> ${p.price} ₽, скидка: ${p.discount}%, <strong>остаток:</strong> ${p.stock ?? 0} шт.</div>
                     <div><strong>Категория:</strong> ${p.category} / ${p.subcategory || '-'}</div>
                     <div><strong>Описание:</strong> ${p.description || '-'}</div>
                     <div><strong>Фото:</strong> ${p.images?.length || 0} шт.</div>
@@ -656,13 +670,34 @@
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    urls.push(data.url); // data.url уже полный URL с BASE_URL
+                    urls.push(data.url);
                 } else {
                     showNotification('Ошибка загрузки файла ' + file.name, true);
                 }
             }
             return urls;
         }
+
+        // Управление полем подкатегории в зависимости от выбранной категории
+        function updateSubcategoryField() {
+            const category = document.getElementById('product-category').value;
+            const inputField = document.getElementById('product-subcategory-input');
+            const selectField = document.getElementById('product-subcategory-select');
+            
+            if (category === 'vape') {
+                inputField.style.display = 'none';
+                selectField.style.display = 'block';
+                selectField.required = true;
+                inputField.required = false;
+            } else {
+                inputField.style.display = 'block';
+                selectField.style.display = 'none';
+                inputField.required = false;
+                selectField.required = false;
+            }
+        }
+
+        document.getElementById('product-category').addEventListener('change', updateSubcategoryField);
 
         function showAddProductModal() {
             document.getElementById('product-modal-title').textContent = 'Добавление товара';
@@ -672,9 +707,12 @@
             document.getElementById('product-description').value = '';
             document.getElementById('product-price').value = '';
             document.getElementById('product-category').value = 'clothes';
-            document.getElementById('product-subcategory').value = '';
+            updateSubcategoryField(); // обновить видимость подкатегории
+            document.getElementById('product-subcategory-input').value = '';
+            document.getElementById('product-subcategory-select').value = 'liquids';
             document.getElementById('product-discount').value = '0';
             document.getElementById('product-isnew').value = '0';
+            document.getElementById('product-stock').value = '1';
             document.getElementById('product-image-preview').innerHTML = '';
             document.getElementById('product-images').value = '';
             document.getElementById('product-error').textContent = '';
@@ -691,9 +729,17 @@
             const description = document.getElementById('product-description').value;
             const price = parseInt(document.getElementById('product-price').value);
             const category = document.getElementById('product-category').value;
-            const subcategory = document.getElementById('product-subcategory').value;
+            
+            let subcategory;
+            if (category === 'vape') {
+                subcategory = document.getElementById('product-subcategory-select').value;
+            } else {
+                subcategory = document.getElementById('product-subcategory-input').value;
+            }
+            
             const discount = parseInt(document.getElementById('product-discount').value) || 0;
             const is_new = parseInt(document.getElementById('product-isnew').value) === 1;
+            const stock = parseInt(document.getElementById('product-stock').value) || 0;
             const imageFiles = document.getElementById('product-images').files;
 
             if (!name || !price) {
@@ -715,11 +761,11 @@
                 existingImages = [];
             }
 
-            // Объединяем: старые + новые
             const allImages = [...existingImages, ...newImageUrls];
 
             const productData = {
                 name, description, price, category, subcategory, discount, is_new,
+                stock, // добавляем поле количества
                 images: allImages
             };
 
@@ -750,17 +796,29 @@
             const products = await res.json();
             const p = products.find(x => x.id === id);
             if (!p) return;
+            
             document.getElementById('product-modal-title').textContent = 'Редактирование товара';
             document.getElementById('product-id').value = p.id;
             document.getElementById('product-name').value = p.name;
             document.getElementById('product-description').value = p.description || '';
             document.getElementById('product-price').value = p.price;
             document.getElementById('product-category').value = p.category;
-            document.getElementById('product-subcategory').value = p.subcategory || '';
+            
+            updateSubcategoryField(); // обновить видимость подкатегории
+            
+            if (p.category === 'vape') {
+                document.getElementById('product-subcategory-select').value = p.subcategory || 'liquids';
+            } else {
+                document.getElementById('product-subcategory-input').value = p.subcategory || '';
+            }
+            
             document.getElementById('product-discount').value = p.discount || 0;
             document.getElementById('product-isnew').value = p.is_new ? '1' : '0';
+            document.getElementById('product-stock').value = p.stock ?? 1;
+            
             // Сохраняем существующие изображения в скрытое поле
             document.getElementById('product-existing-images').value = JSON.stringify(p.images || []);
+            
             // Показываем предпросмотр существующих
             const preview = document.getElementById('product-image-preview');
             preview.innerHTML = '';
@@ -769,6 +827,7 @@
                 img.src = url;
                 preview.appendChild(img);
             });
+            
             document.getElementById('product-images').value = ''; // очищаем input file
             document.getElementById('product-error').textContent = '';
             document.getElementById('product-modal').classList.add('active');
