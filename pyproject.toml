@@ -1,0 +1,9 @@
+[tool.poetry]
+name = "bot"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <email>"]
+
+[tool.poetry.dependencies]
+python = "3.11"  # или "^3.11"
+# остальные зависимости
