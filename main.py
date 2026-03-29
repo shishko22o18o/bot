@@ -94,6 +94,31 @@ admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 admin_logger.addHandler(admin_handler)
 admin_logger.setLevel(logging.INFO)
 
+async def get_valid_promo(code: str) -> tuple[Optional[dict], Optional[str]]:
+    """Возвращает (промокод, None) если валиден, иначе (None, сообщение об ошибке)"""
+    promo = await promocodes_col.find_one({"code": code})
+    if not promo:
+        return None, "Промокод не найден"
+
+    # Преобразуем expires_at в datetime, если это строка
+    expires = promo.get('expires_at')
+    if isinstance(expires, str):
+        try:
+            expires = datetime.fromisoformat(expires)
+        except ValueError:
+            expires = datetime.now()
+    elif expires is None:
+        expires = datetime.now()
+
+    now = datetime.now()
+    if expires < now:
+        return None, "Срок действия истёк"
+
+    if promo.get('used_count', 0) >= promo.get('max_uses', 0):
+        return None, "Промокод исчерпан"
+
+    return promo, None
+    
 # ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
 client = motor.motor_asyncio.AsyncIOMotorClient(
     MONGO_URL,
@@ -112,6 +137,7 @@ wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
 wheel_usage_col = db["wheel_usage"]
+visits_col = db["visits"]
 
 async def init_mongodb():
     try:
@@ -134,6 +160,7 @@ async def init_mongodb():
     await admin_logs_col.create_index([("timestamp", -1)])
     await settings_col.create_index("key", unique=True)
     await wheel_usage_col.create_index([("user_id", 1), ("promo_code", 1)], unique=True)
+    await visits_col.create_index([("user_id", 1), ("date", 1)], unique=True)  # чтобы не дублировать
 
     logger.info("MongoDB инициализирована.")
 
@@ -340,6 +367,16 @@ class WheelPrize(StatesGroup):
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     admin = is_admin(message.from_user.id)
+      # Записываем посещение (один раз в день)
+    today = datetime.now().date()
+    try:
+        await visits_col.update_one(
+            {"user_id": str(message.from_user.id), "date": today.isoformat()},
+            {"$set": {"visited_at": datetime.now()}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Ошибка записи посещения: {e}")
     welcome = (
         f"Привет, <b>{message.from_user.first_name}</b>! 👋\n\n"
         f"Добро пожаловать в <b>Bau28Store</b>.\n"
@@ -1673,14 +1710,11 @@ async def check_promo(request: Request):
         code = data.get('code', '').strip().upper()
         if not code:
             return {"valid": False, "error": "Введите код"}
-        promo = await promocodes_col.find_one({"code": code})
+
+        promo, error = await get_valid_promo(code)
         if not promo:
-            return {"valid": False, "error": "Промокод не найден"}
-        now = datetime.now()
-        if promo.get('expires_at', now) < now:
-            return {"valid": False, "error": "Срок действия истёк"}
-        if promo.get('used_count', 0) >= promo.get('max_uses', 0):
-            return {"valid": False, "error": "Промокод больше недействителен"}
+            return {"valid": False, "error": error}
+
         if promo['type'] == 'wheel':
             return {"valid": True, "type": "wheel", "code": code}
         else:
@@ -1691,6 +1725,10 @@ async def check_promo(request: Request):
                 "discount_type": promo['discount_type'],
                 "code": code
             }
+    except Exception as e:
+        logger.error(f"Ошибка проверки промокода: {e}")
+        return {"valid": False, "error": "Ошибка сервера"}
+        
     except Exception as e:
         logger.error(f"Ошибка проверки промокода: {e}")
         return {"valid": False, "error": "Ошибка сервера"}
@@ -1718,10 +1756,6 @@ class WheelSpinRequest(BaseModel):
 
 @app.post("/api/wheel/spin")
 async def wheel_spin(request: WheelSpinRequest):
-    """
-    Проверяет, может ли пользователь крутить колесо по данному промокоду.
-    Если может – возвращает случайный приз и фиксирует использование.
-    """
     promo_code = request.promo_code.strip().upper()
     user_id = request.user_id.strip()
 
@@ -1732,16 +1766,12 @@ async def wheel_spin(request: WheelSpinRequest):
             raise HTTPException(status_code=403, detail="Неверная подпись")
 
     # Проверка промокода
-    promo = await promocodes_col.find_one({"code": promo_code})
+    promo, error = await get_valid_promo(promo_code)
     if not promo:
-        raise HTTPException(status_code=400, detail="Промокод не найден")
+        raise HTTPException(status_code=400, detail=error)
+
     if promo.get('type') != 'wheel':
         raise HTTPException(status_code=400, detail="Этот промокод не для колеса")
-    now = datetime.now()
-    if promo.get('expires_at', now) < now:
-        raise HTTPException(status_code=400, detail="Срок действия истёк")
-    if promo.get('used_count', 0) >= promo.get('max_uses', 0):
-        raise HTTPException(status_code=400, detail="Промокод исчерпан")
 
     # Проверка, не использовал ли уже этот пользователь данный промокод
     usage = await wheel_usage_col.find_one({"user_id": user_id, "promo_code": promo_code})
@@ -1791,6 +1821,17 @@ async def wheel_spin(request: WheelSpinRequest):
     }
 
 # ==================== АДМИНСКИЕ API ====================
+
+@app.get("/admin/stats/visits")
+async def admin_stats_visits(date: str, admin=Depends(get_current_admin)):
+    """Возвращает количество уникальных посетителей за указанную дату (YYYY-MM-DD)"""
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат даты, используйте YYYY-MM-DD")
+    count = await visits_col.count_documents({"date": target_date})
+    return {"date": date, "visitors": count}
+    
 class LoginRequest(BaseModel):
     user_id: str
 
@@ -1876,6 +1917,17 @@ async def admin_get_promocodes(admin=Depends(get_current_admin)):
 async def admin_create_promocode(promo: dict, admin=Depends(get_current_admin)):
     promo["created_at"] = datetime.now()
     promo["used_count"] = 0
+
+    # Преобразуем expires_at из строки в datetime
+    if "expires_at" in promo and isinstance(promo["expires_at"], str):
+        try:
+            promo["expires_at"] = datetime.fromisoformat(promo["expires_at"])
+        except ValueError:
+            # Если не парсится, считаем бессрочным
+            promo["expires_at"] = datetime(9999, 12, 31)
+    else:
+        promo["expires_at"] = datetime(9999, 12, 31)
+
     await promocodes_col.insert_one(promo)
     log_admin_action(admin, f"Создал промокод {promo.get('code')}")
     return {"ok": True}
