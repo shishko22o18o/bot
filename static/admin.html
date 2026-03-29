@@ -380,6 +380,14 @@
                     <div class="card">
                         <h3><i class="fas fa-chart-pie"></i> Общая статистика</h3>
                         <div id="general-stats"></div>
+                        <div class="card">
+                        <h3><i class="fas fa-users"></i> Посетители бота</h3>
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                       <input type="date" id="visit-date" value="">
+                      <button onclick="loadVisits()">Показать</button>
+                     </div>
+                     <div id="visitors-count">Выберите дату</div>
+                    </div>
                     </div>
                     <div class="card">
                         <h3><i class="fas fa-fire"></i> Популярные товары</h3>
@@ -625,6 +633,23 @@
             });
         });
 
+        async function loadVisits() {
+    const date = document.getElementById('visit-date').value;
+    if (!date) {
+        document.getElementById('visitors-count').innerText = 'Выберите дату';
+        return;
+    }
+    const res = await fetch(`/admin/stats/visits?date=${date}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+        const data = await res.json();
+        document.getElementById('visitors-count').innerHTML = `<strong>${data.visitors}</strong> уникальных посетителей`;
+    } else {
+        document.getElementById('visitors-count').innerText = 'Ошибка загрузки';
+    }
+}
+        
         // ==================== ТОВАРЫ ====================
         async function loadProducts() {
             const res = await fetch('/admin/products', { headers: { 'Authorization': `Bearer ${token}` } });
