@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Bau28Store · Магазин в Telegram</title>
-    <style>
+     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
         :root {
@@ -855,7 +855,7 @@
     </div>
 
     <div class="notification" id="notification">✅ Добавлено</div>
-
+    
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -1121,6 +1121,9 @@
                 initCarousels();
             }
 
+            // ==================== ИСПРАВЛЕННАЯ ФУНКЦИЯ openProductModal ====================
+            let currentAddToCartHandler = null; // переменная для хранения текущего обработчика
+
             function openProductModal(product) {
                 currentProduct = product;
                 currentProductImageIndex = 0;
@@ -1129,14 +1132,17 @@
                 const finalPrice = product.discount ? Math.round(product.price * (1 - product.discount/100)) : product.price;
                 modalProductPrice.innerHTML = product.discount ? `<span class="old-price">${formatPrice(product.price)}</span> ${formatPrice(finalPrice)}` : formatPrice(finalPrice);
                 
-                const newBtn = modalAddToCart.cloneNode(true);
-                modalAddToCart.parentNode.replaceChild(newBtn, modalAddToCart);
-                newBtn.addEventListener('click', () => {
+                // Удаляем предыдущий обработчик, если он был
+                if (currentAddToCartHandler) {
+                    modalAddToCart.removeEventListener('click', currentAddToCartHandler);
+                }
+                // Создаём новый обработчик
+                currentAddToCartHandler = () => {
                     addToCart(currentProduct);
                     addHistory('Добавление в корзину (через карточку)', currentProduct.name, currentProduct.id);
                     productModal.classList.remove('active');
-                });
-                window.modalAddToCart = newBtn;
+                };
+                modalAddToCart.addEventListener('click', currentAddToCartHandler);
 
                 updateModalImage();
                 productModal.classList.add('active');
@@ -1293,7 +1299,6 @@
                 updateCart();
             });
 
-            // Колесо фортуны
             async function fetchWheelPrizes() {
                 try {
                     const response = await fetch(`/api/wheel/prizes`);
