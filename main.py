@@ -57,6 +57,8 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
     logging.warning("matplotlib не установлен, функция /stats_chart будет недоступна")
 
+from dotenv import load_dotenv
+load_dotenv()
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
