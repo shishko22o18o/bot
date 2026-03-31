@@ -47,6 +47,10 @@ from pydantic import BaseModel
 import aiofiles
 from PIL import Image
 
+# Загрузка переменных окружения из .env
+from dotenv import load_dotenv
+load_dotenv()
+
 # matplotlib (опционально)
 try:
     import matplotlib
@@ -57,8 +61,6 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
     logging.warning("matplotlib не установлен, функция /stats_chart будет недоступна")
 
-from dotenv import load_dotenv
-load_dotenv()
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
@@ -96,31 +98,6 @@ admin_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 admin_logger.addHandler(admin_handler)
 admin_logger.setLevel(logging.INFO)
 
-async def get_valid_promo(code: str) -> tuple[Optional[dict], Optional[str]]:
-    """Возвращает (промокод, None) если валиден, иначе (None, сообщение об ошибке)"""
-    promo = await promocodes_col.find_one({"code": code})
-    if not promo:
-        return None, "Промокод не найден"
-
-    # Преобразуем expires_at в datetime, если это строка
-    expires = promo.get('expires_at')
-    if isinstance(expires, str):
-        try:
-            expires = datetime.fromisoformat(expires)
-        except ValueError:
-            expires = datetime.now()
-    elif expires is None:
-        expires = datetime.now()
-
-    now = datetime.now()
-    if expires < now:
-        return None, "Срок действия истёк"
-
-    if promo.get('used_count', 0) >= promo.get('max_uses', 0):
-        return None, "Промокод исчерпан"
-
-    return promo, None
-    
 # ==================== ПОДКЛЮЧЕНИЕ К MONGODB ====================
 client = motor.motor_asyncio.AsyncIOMotorClient(
     MONGO_URL,
@@ -139,7 +116,7 @@ wheel_prizes_col = db["wheel_prizes"]
 admin_logs_col = db["admin_logs"]
 settings_col = db["settings"]
 wheel_usage_col = db["wheel_usage"]
-visits_col = db["visits"]
+visits_col = db["visits"]                     # Новая коллекция для статистики посещений
 
 async def init_mongodb():
     try:
@@ -162,7 +139,7 @@ async def init_mongodb():
     await admin_logs_col.create_index([("timestamp", -1)])
     await settings_col.create_index("key", unique=True)
     await wheel_usage_col.create_index([("user_id", 1), ("promo_code", 1)], unique=True)
-    await visits_col.create_index([("user_id", 1), ("date", 1)], unique=True)  # чтобы не дублировать
+    await visits_col.create_index([("user_id", 1), ("date", 1)], unique=True)
 
     logger.info("MongoDB инициализирована.")
 
@@ -207,19 +184,16 @@ def verify_vk_signature(params: dict, secret: str) -> bool:
     if not secret:
         return True  # Если ключ не задан, пропускаем проверку (для разработки)
     
-    # Копируем параметры и удаляем sign
     vk_params = params.copy()
     sign = vk_params.pop('sign', None)
     if not sign:
         return False
     
-    # Сортируем ключи и формируем строку
     items = []
     for key in sorted(vk_params.keys()):
         items.append(f"{key}={vk_params[key]}")
     params_str = '&'.join(items)
     
-    # Вычисляем подпись
     expected_sign = hmac.new(
         key=secret.encode(),
         msg=params_str.encode(),
@@ -303,7 +277,7 @@ def generate_help_text() -> str:
 
 📤 Экспорт / Импорт
 📤 Экспорт CSV (кнопка) – выгрузка товаров в CSV
-/backup – полная резервная кпия (JSON)
+/backup – полная резервная копия (JSON)
 /restore – восстановление из JSON (с подтверждением)
 
 ❌ Отмена – отмена текущего действия в любом FSM
@@ -344,6 +318,7 @@ class AddProduct(StatesGroup):
     discount = State()
     is_new = State()
     photos = State()
+    stock = State()   # добавлено поле количества
 
 class EditProduct(StatesGroup):
     choose_field = State()
@@ -365,11 +340,9 @@ class WheelPrize(StatesGroup):
     probability = State()
 
 # ==================== ХЭНДЛЕРЫ БОТА ====================
-
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    admin = is_admin(message.from_user.id)
-      # Записываем посещение (один раз в день)
+    # Записываем посещение (один раз в день)
     today = datetime.now().date()
     try:
         await visits_col.update_one(
@@ -379,6 +352,8 @@ async def cmd_start(message: Message):
         )
     except Exception as e:
         logger.error(f"Ошибка записи посещения: {e}")
+
+    admin = is_admin(message.from_user.id)
     welcome = (
         f"Привет, <b>{message.from_user.first_name}</b>! 👋\n\n"
         f"Добро пожаловать в <b>Bau28Store</b>.\n"
@@ -417,26 +392,14 @@ async def handle_web_app_data(message: Message):
 
         discount = 0
         if promo_code:
-            promo = await promocodes_col.find_one({"code": promo_code})
-            if promo and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
-                if promo.get('type') == 'discount':
-                    if promo['discount_type'] == 'percent':
-                        discount = int(total * promo['value'] / 100)
-                    else:
-                        discount = promo['value']
-                    total -= discount
-                    await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
-
-        # Уменьшаем остатки товаров
-        for item in items:
-            product_id = item['id']
-            quantity = item['quantity']
-            product = await get_product_by_id(product_id)
-            if product:
-                new_stock = product.get('stock', 0) - quantity
-                if new_stock < 0:
-                    new_stock = 0
-                await products_col.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
+            promo = await get_valid_promo(promo_code)
+            if promo and promo.get('type') == 'discount':
+                if promo['discount_type'] == 'percent':
+                    discount = int(total * promo['value'] / 100)
+                else:
+                    discount = promo['value']
+                total -= discount
+                await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
 
         order_id = str(uuid.uuid4().hex[:8])
         order_doc = {
@@ -448,10 +411,18 @@ async def handle_web_app_data(message: Message):
             "status": "new",
             "created_at": datetime.now(),
             "promo_used": promo_code if promo_code else None,
-            "discount_applied": discount,
-            "platform": "telegram"
+            "discount_applied": discount
         }
         await orders_col.insert_one(order_doc)
+
+        # Уменьшаем остатки товаров
+        for item in items:
+            product_id = item['id']
+            quantity = item['quantity']
+            await products_col.update_one(
+                {"id": product_id},
+                {"$inc": {"stock": -quantity}}
+            )
 
         receipt = "🧾 <b>Детали заказа:</b>\n\n"
         for item in items:
@@ -1602,6 +1573,32 @@ async def show_stats(message: Message):
     )
     await message.answer(text)
 
+# ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРОМОКОДОВ ====================
+async def get_valid_promo(code: str) -> Optional[Dict]:
+    """Возвращает промокод, если он валиден, иначе None"""
+    promo = await promocodes_col.find_one({"code": code})
+    if not promo:
+        return None
+
+    # Преобразуем expires_at в datetime, если это строка
+    expires = promo.get('expires_at')
+    if isinstance(expires, str):
+        try:
+            expires = datetime.fromisoformat(expires)
+        except ValueError:
+            expires = datetime.now()
+    elif expires is None:
+        expires = datetime.now()
+
+    now = datetime.now()
+    if expires < now:
+        return None
+
+    if promo.get('used_count', 0) >= promo.get('max_uses', 0):
+        return None
+
+    return promo
+
 # ==================== FASTAPI ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1627,8 +1624,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ==================== ПУБЛИЧНЫЕ API ====================
 @app.get("/api/products")
 async def get_products():
-    # Возвращаем только товары, которые есть в наличии (stock > 0)
-    cursor = products_col.find({"stock": {"$gt": 0}})
+    cursor = products_col.find({"stock": {"$gt": 0}})  # только товары в наличии
     products = {}
     async for doc in cursor:
         cat = doc['category']
@@ -1648,7 +1644,8 @@ async def get_products():
             "discount": doc.get('discount', 0),
             "isNew": doc.get('is_new', False),
             "images": full_image_urls,
-            "img": full_image_urls[0] if full_image_urls else f"{BASE_URL}/static/uploaded/default.jpg"
+            "img": full_image_urls[0] if full_image_urls else f"{BASE_URL}/static/uploaded/default.jpg",
+            "stock": doc.get('stock', 0)
         }
         if cat == "vape":
             if cat not in products:
@@ -1669,26 +1666,14 @@ async def create_order(request: Request):
     promo_code = order.get('promo')
     discount = 0
     if promo_code:
-        promo = await promocodes_col.find_one({"code": promo_code})
-        if promo and promo.get('type') == 'discount' and promo.get('expires_at', datetime.now()) > datetime.now() and promo.get('used_count', 0) < promo.get('max_uses', 999999):
+        promo = await get_valid_promo(promo_code)
+        if promo and promo.get('type') == 'discount':
             if promo['discount_type'] == 'percent':
                 discount = int(total * promo['value'] / 100)
             else:
                 discount = promo['value']
             total -= discount
             await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
-
-    # Уменьшаем остатки
-    for item in order['items']:
-        product_id = item['id']
-        quantity = item['quantity']
-        product = await get_product_by_id(product_id)
-        if product:
-            new_stock = product.get('stock', 0) - quantity
-            if new_stock < 0:
-                new_stock = 0
-            await products_col.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
-
     order_id = str(uuid.uuid4().hex[:8])
     order_doc = {
         "id": order_id,
@@ -1700,9 +1685,17 @@ async def create_order(request: Request):
         "created_at": datetime.now(),
         "promo_used": promo_code,
         "discount_applied": discount,
-        "platform": order.get('platform', 'unknown')
+        "platform": order.get('platform', 'telegram')
     }
     await orders_col.insert_one(order_doc)
+
+    # Уменьшаем остатки
+    for item in order['items']:
+        await products_col.update_one(
+            {"id": item['id']},
+            {"$inc": {"stock": -item['quantity']}}
+        )
+
     return {"status": "ok", "order_id": order_id}
 
 @app.post("/api/check_promo")
@@ -1712,11 +1705,9 @@ async def check_promo(request: Request):
         code = data.get('code', '').strip().upper()
         if not code:
             return {"valid": False, "error": "Введите код"}
-
-        promo, error = await get_valid_promo(code)
+        promo = await get_valid_promo(code)
         if not promo:
-            return {"valid": False, "error": error}
-
+            return {"valid": False, "error": "Промокод недействителен или истёк"}
         if promo['type'] == 'wheel':
             return {"valid": True, "type": "wheel", "code": code}
         else:
@@ -1727,10 +1718,6 @@ async def check_promo(request: Request):
                 "discount_type": promo['discount_type'],
                 "code": code
             }
-    except Exception as e:
-        logger.error(f"Ошибка проверки промокода: {e}")
-        return {"valid": False, "error": "Ошибка сервера"}
-        
     except Exception as e:
         logger.error(f"Ошибка проверки промокода: {e}")
         return {"valid": False, "error": "Ошибка сервера"}
@@ -1754,39 +1741,30 @@ async def get_wheel_prizes():
 class WheelSpinRequest(BaseModel):
     promo_code: str
     user_id: str
-    sign: Optional[str] = None  # Для VK подписи
+    sign: Optional[str] = None
 
 @app.post("/api/wheel/spin")
 async def wheel_spin(request: WheelSpinRequest):
     promo_code = request.promo_code.strip().upper()
     user_id = request.user_id.strip()
 
-    # Если передан sign, можно проверить подпись (для VK)
     if request.sign:
         params = {"promo_code": promo_code, "user_id": user_id}
         if not verify_vk_signature(params, VK_SECRET_KEY):
             raise HTTPException(status_code=403, detail="Неверная подпись")
 
-    # Проверка промокода
-    promo, error = await get_valid_promo(promo_code)
-    if not promo:
-        raise HTTPException(status_code=400, detail=error)
+    promo = await get_valid_promo(promo_code)
+    if not promo or promo.get('type') != 'wheel':
+        raise HTTPException(status_code=400, detail="Промокод не подходит для колеса")
 
-    if promo.get('type') != 'wheel':
-        raise HTTPException(status_code=400, detail="Этот промокод не для колеса")
-
-    # Проверка, не использовал ли уже этот пользователь данный промокод
     usage = await wheel_usage_col.find_one({"user_id": user_id, "promo_code": promo_code})
     if usage:
         raise HTTPException(status_code=403, detail="Вы уже использовали этот промокод")
 
-    # Получаем призы
-    cursor = wheel_prizes_col.find({})
-    prizes = await cursor.to_list(length=100)
+    prizes = await wheel_prizes_col.find().to_list(length=100)
     if not prizes:
         raise HTTPException(status_code=404, detail="Нет доступных призов")
 
-    # Выбираем случайный приз с учётом веса
     total_weight = sum(p.get('probability', 1) for p in prizes)
     rand = random.uniform(0, total_weight)
     cumulative = 0
@@ -1799,7 +1777,6 @@ async def wheel_spin(request: WheelSpinRequest):
     if not selected:
         selected = prizes[0]
 
-    # Фиксируем использование
     await wheel_usage_col.insert_one({
         "user_id": user_id,
         "promo_code": promo_code,
@@ -1807,10 +1784,8 @@ async def wheel_spin(request: WheelSpinRequest):
         "spun_at": datetime.now()
     })
 
-    # Увеличиваем счётчик использований промокода
     await promocodes_col.update_one({"code": promo_code}, {"$inc": {"used_count": 1}})
 
-    # Возвращаем приз
     return {
         "success": True,
         "prize": {
@@ -1821,6 +1796,30 @@ async def wheel_spin(request: WheelSpinRequest):
             "value": selected['value']
         }
     }
+
+# ==================== СТАТИСТИКА ПОСЕЩЕНИЙ ====================
+@app.get("/admin/visits")
+async def admin_get_visits(days: int = 30, admin=Depends(get_current_admin)):
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days-1)
+
+    pipeline = [
+        {"$match": {"date": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}}},
+        {"$group": {"_id": "$date", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    cursor = visits_col.aggregate(pipeline)
+    results = await cursor.to_list(length=days)
+
+    visits_by_day = {item["_id"]: item["count"] for item in results}
+    full_data = []
+    current = start_date
+    while current <= end_date:
+        date_str = current.isoformat()
+        full_data.append({"date": date_str, "count": visits_by_day.get(date_str, 0)})
+        current += timedelta(days=1)
+
+    return full_data
 
 # ==================== АДМИНСКИЕ API ====================
 
@@ -2149,6 +2148,36 @@ async def admin_upload_image(file: UploadFile = File(...), admin=Depends(get_cur
     os.remove(temp_path)
     image_url = f"{BASE_URL}/static/uploaded/{out_filename}"
     return {"url": image_url}
+
+# ==================== СТАТИЧЕСКИЕ СТРАНИЦЫ ====================
+@app.get("/admin", response_class=HTMLResponse)
+async def get_admin_page():
+    try:
+        with open("static/admin.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return HTMLResponse(content="Файл админ-панели не найден. Создайте static/admin.html", status_code=404)
+
+@app.get("/", response_class=HTMLResponse)
+async def get_store():
+    try:
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return HTMLResponse(content="Файл магазина не найден. Создайте static/index.html", status_code=404)
+
+@app.get("/vk", response_class=HTMLResponse)
+async def get_vk_store():
+    try:
+        with open("static/index_vk.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        try:
+            with open("static/index.html", "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return HTMLResponse(content="Файл магазина не найден. Создайте static/index_vk.html или static/index.html", status_code=404)
+
 
 # ==================== СТАТИЧЕСКИЕ СТРАНИЦЫ ====================
 @app.get("/admin", response_class=HTMLResponse)
